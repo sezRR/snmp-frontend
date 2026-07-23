@@ -1,5 +1,9 @@
 packages: []
 
+# minimumReleaseAge: 10080
+# trustPolicy: "no-downgrade"
+# blockExoticSubdeps: true
+
 allowBuilds:
   esbuild: true
   msw: false

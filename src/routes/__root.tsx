@@ -1,20 +1,47 @@
-import { Link, Outlet, createRootRoute } from "@tanstack/react-router"
+import { AppSidebar } from "@/components/app-sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { Separator } from "@/components/ui/separator"
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import { Toaster } from "@/components/ui/sonner"
+import type { QueryClient } from "@tanstack/react-query"
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
+import { Outlet, createRootRouteWithContext } from "@tanstack/react-router"
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools"
 
+interface RouterContext {
+  queryClient: QueryClient
+}
+
 const RootLayout = () => (
-  <>
-    <div className="p-2 flex gap-2">
-      <Link to="/" className="[&.active]:font-bold">
-        Home
-      </Link>{" "}
-      <Link to="/about" className="[&.active]:font-bold">
-        About
-      </Link>
-    </div>
-    <hr />
-    <Outlet />
-    <TanStackRouterDevtools />
-  </>
+  <SidebarProvider>
+    <AppSidebar />
+    <SidebarInset>
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 h-4" />
+        <span className="text-sm font-medium">SNMP Monitor</span>
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
+      </header>
+      <main className="flex flex-1 flex-col gap-4 p-4">
+        <Outlet />
+      </main>
+    </SidebarInset>
+    <Toaster />
+    {import.meta.env.DEV && (
+      <>
+        <TanStackRouterDevtools />
+        <ReactQueryDevtools buttonPosition="bottom-right" />
+      </>
+    )}
+  </SidebarProvider>
 )
 
-export const Route = createRootRoute({ component: RootLayout })
+export const Route = createRootRouteWithContext<RouterContext>()({
+  component: RootLayout,
+})

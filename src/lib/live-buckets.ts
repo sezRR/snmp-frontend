@@ -1,22 +1,34 @@
-import type { LiveMetrics, MetricsPoint } from "@/lib/api/types"
+import type { ChartPoint, MetricsSnapshot } from "@/lib/metrics"
+import { snapshotToPoint } from "@/lib/metrics"
 
-interface Accumulator {
-  cpu: number
-  ram: number
-  bwIn: number
-  bwOut: number
-  count: number
-}
+type MetricKey = Exclude<keyof ChartPoint, "ts">
+
+const METRIC_KEYS: MetricKey[] = [
+  "cpu_percent",
+  "ram_percent",
+  "disk_percent",
+  "net_rx_bps",
+  "net_tx_bps",
+]
+
+type Accumulator = Record<MetricKey, { sum: number; count: number }>
+
+const emptyAccumulator = (): Accumulator =>
+  Object.fromEntries(
+    METRIC_KEYS.map((key) => [key, { sum: 0, count: 0 }])
+  ) as Accumulator
 
 // Extends bucketed historic points with live SSE samples, aggregated into the
 // same interval so the X axis keeps an even time step. Only buckets strictly
 // after the last historic point are appended; the newest (partial) bucket
-// re-averages as samples arrive.
+// re-averages as samples arrive. A metric missing from a sample contributes
+// nothing rather than counting as zero — the same rule the backend's stats
+// aggregate uses.
 export function mergeLiveIntoPoints(
-  points: MetricsPoint[],
-  samples: LiveMetrics[],
+  points: ChartPoint[],
+  samples: MetricsSnapshot[],
   intervalMs: number
-): MetricsPoint[] {
+): ChartPoint[] {
   if (samples.length === 0) return points
 
   const lastHistoricMs =
@@ -28,18 +40,14 @@ export function mergeLiveIntoPoints(
   for (const sample of samples) {
     const bucketMs = Math.floor(Date.parse(sample.ts) / intervalMs) * intervalMs
     if (bucketMs <= lastHistoricMs) continue
-    const acc = buckets.get(bucketMs) ?? {
-      cpu: 0,
-      ram: 0,
-      bwIn: 0,
-      bwOut: 0,
-      count: 0,
+    const acc = buckets.get(bucketMs) ?? emptyAccumulator()
+    const point = snapshotToPoint(sample)
+    for (const key of METRIC_KEYS) {
+      const value = point[key]
+      if (value === null) continue
+      acc[key].sum += value
+      acc[key].count += 1
     }
-    acc.cpu += sample.cpu_percent
-    acc.ram += sample.ram_percent
-    acc.bwIn += sample.bandwidth_in_bps
-    acc.bwOut += sample.bandwidth_out_bps
-    acc.count += 1
     buckets.set(bucketMs, acc)
   }
 
@@ -47,13 +55,15 @@ export function mergeLiveIntoPoints(
 
   const liveTail = [...buckets.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([bucketMs, acc]): MetricsPoint => ({
-      ts: new Date(bucketMs).toISOString(),
-      cpu_percent: acc.cpu / acc.count,
-      ram_percent: acc.ram / acc.count,
-      bandwidth_in_bps: acc.bwIn / acc.count,
-      bandwidth_out_bps: acc.bwOut / acc.count,
-    }))
+    .map(([bucketMs, acc]): ChartPoint => {
+      const averaged = Object.fromEntries(
+        METRIC_KEYS.map((key) => [
+          key,
+          acc[key].count === 0 ? null : acc[key].sum / acc[key].count,
+        ])
+      ) as Omit<ChartPoint, "ts">
+      return { ts: new Date(bucketMs).toISOString(), ...averaged }
+    })
 
   return [...points, ...liveTail]
 }

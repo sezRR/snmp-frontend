@@ -15,6 +15,10 @@ interface RadialMetricCardProps {
   /** 0–100, or null while no data has arrived yet */
   value: number | null
   colorVar: string
+  /** Absolute reading behind the percentage, e.g. "10.5 GiB / 16.0 GiB". */
+  caption?: string
+  /** Qualifier for the caption, e.g. where the limit came from. */
+  footnote?: string
 }
 
 export function RadialMetricCard({
@@ -22,6 +26,8 @@ export function RadialMetricCard({
   description,
   value,
   colorVar,
+  caption,
+  footnote,
 }: RadialMetricCardProps) {
   const chartConfig = {
     value: { label: title, color: colorVar },
@@ -30,12 +36,12 @@ export function RadialMetricCard({
   const clamped = value === null ? 0 : Math.min(100, Math.max(0, value))
 
   return (
-    <Card className="gap-2">
+    <Card className="h-full gap-2">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
-      <CardContent className="pb-0">
+      <CardContent className="flex flex-1 flex-col justify-center gap-2">
         <ChartContainer
           config={chartConfig}
           className="mx-auto aspect-square max-h-[160px] w-full"
@@ -80,6 +86,14 @@ export function RadialMetricCard({
             </PolarRadiusAxis>
           </RadialBarChart>
         </ChartContainer>
+        {caption ? (
+          <div className="flex flex-col items-center gap-0.5 text-center">
+            <span className="text-sm font-medium tabular-nums">{caption}</span>
+            {footnote ? (
+              <span className="text-xs text-muted-foreground">{footnote}</span>
+            ) : null}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )

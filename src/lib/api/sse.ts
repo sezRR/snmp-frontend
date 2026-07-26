@@ -1,5 +1,14 @@
-import { API_BASE_URL } from "./client"
+import { apiUrl } from "./client"
 
-export function buildLiveUrl(workerId: string): string {
-  return `${API_BASE_URL}/api/v1/snmp/worker/${workerId}/live`
+/** One machine's live tail — used by the machine detail page. */
+export function machineStreamUrl(mac: string): string {
+  return apiUrl(`/machines/${encodeURIComponent(mac)}/metrics/stream`)
+}
+
+/**
+ * Every machine over a single connection. Dashboards use this instead of one
+ * EventSource per card, which browsers cap at six per origin.
+ */
+export function fleetStreamUrl(macs?: string[]): string {
+  return apiUrl("/metrics/stream", macs?.length ? { mac: macs } : undefined)
 }

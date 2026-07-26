@@ -13,12 +13,12 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import type { MetricsPoint } from "@/lib/api/types"
+import type { ChartPoint } from "@/lib/metrics"
 import type { TimeRangeKey } from "@/lib/time-range"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 interface SeriesDef {
-  dataKey: keyof Omit<MetricsPoint, "ts">
+  dataKey: keyof Omit<ChartPoint, "ts">
   label: string
   colorVar: string
 }
@@ -26,7 +26,7 @@ interface SeriesDef {
 interface MetricsLineChartProps {
   title: string
   description?: string
-  data: MetricsPoint[]
+  data: ChartPoint[]
   series: SeriesDef[]
   range: TimeRangeKey
   valueFormatter: (value: number) => string

@@ -1,53 +1,46 @@
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 
+// `hours` and `bucket` map straight onto /metrics/stats — the bucket string is
+// a Postgres interval handed to time_bucket, so it must stay in that syntax.
 export const TIME_RANGES = {
   "15m": {
     label: "15 min",
-    durationMs: 15 * MINUTE,
-    interval: "30s",
+    hours: 0.25,
+    bucket: "30 seconds",
     intervalMs: 30_000,
+    durationMs: 15 * MINUTE,
   },
   "1h": {
     label: "1 hour",
-    durationMs: HOUR,
-    interval: "1m",
+    hours: 1,
+    bucket: "1 minute",
     intervalMs: MINUTE,
+    durationMs: HOUR,
   },
   "6h": {
     label: "6 hours",
-    durationMs: 6 * HOUR,
-    interval: "5m",
+    hours: 6,
+    bucket: "5 minutes",
     intervalMs: 5 * MINUTE,
+    durationMs: 6 * HOUR,
   },
   "24h": {
     label: "24 hours",
-    durationMs: 24 * HOUR,
-    interval: "15m",
+    hours: 24,
+    bucket: "15 minutes",
     intervalMs: 15 * MINUTE,
+    durationMs: 24 * HOUR,
   },
   "7d": {
     label: "7 days",
-    durationMs: 7 * 24 * HOUR,
-    interval: "1h",
+    hours: 168,
+    bucket: "1 hour",
     intervalMs: HOUR,
+    durationMs: 7 * 24 * HOUR,
   },
 } as const
 
 export type TimeRangeKey = keyof typeof TIME_RANGES
 
 export const timeRangeKeys = Object.keys(TIME_RANGES) as TimeRangeKey[]
-
-export function resolveRange(key: TimeRangeKey): {
-  start: string
-  end: string
-  interval: string
-} {
-  const { durationMs, interval } = TIME_RANGES[key]
-  const end = Date.now()
-  return {
-    start: new Date(end - durationMs).toISOString(),
-    end: new Date(end).toISOString(),
-    interval,
-  }
-}

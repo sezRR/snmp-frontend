@@ -1,0 +1,54 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: snmp-frontend
+  labels:
+    app.kubernetes.io/name: snmp-frontend
+spec:
+  entryPoints:
+    - web
+  routes:
+    # The SPA calls /api on its own origin, so both routes must stay on the same
+    # entryPoint and host. FastAPI mounts its whole contract under /api and
+    # expects the prefix to survive, so there is no stripPrefix middleware here.
+    - kind: Rule
+      match: PathPrefix(`/api`)
+      # Higher than the catch-all so API calls never fall through to the SPA.
+      priority: 20
+      middlewares:
+        - name: snmp-api-compress
+      services:
+        - name: fastapi
+          port: 80
+          # SSE: /api/metrics/stream and /api/machines/{mac}/metrics/stream push
+          # events as they are produced. Flushing immediately keeps Traefik from
+          # holding them back behind its default 100ms buffer window.
+          responseForwarding:
+            flushInterval: 1ms
+
+    # Catch-all: TanStack Router owns every other path.
+    - kind: Rule
+      match: PathPrefix(`/`)
+      priority: 10
+      services:
+        - name: snmp-frontend
+          port: 80
+
+  # TLS: add the block below once an entryPoint of `websecure` is in the list
+  # above, and point certResolver at whatever resolver the Traefik install uses.
+  #
+  # tls:
+  #   certResolver: letsencrypt
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: snmp-api-compress
+  labels:
+    app.kubernetes.io/name: snmp-frontend
+spec:
+  compress:
+    # Compressing an event stream would buffer it and stall the live charts.
+    # Static assets are already gzipped by nginx and are skipped anyway.
+    excludedContentTypes:
+      - text/event-stream

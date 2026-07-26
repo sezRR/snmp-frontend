@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -62,9 +63,9 @@ export function AppBreadcrumbs() {
     return (
       <Trail>
         <Crumb to="/">Dashboard</Crumb>
-        <BreadcrumbSeparator />
+        <BreadcrumbSeparator className="hidden sm:block" />
         <Crumb to="/machines">Machines</Crumb>
-        <BreadcrumbSeparator />
+        <BreadcrumbSeparator className="hidden sm:block" />
         <BreadcrumbItem>
           <Switcher
             label={current ? machineName(current) : mac}
@@ -89,9 +90,9 @@ export function AppBreadcrumbs() {
     return (
       <Trail>
         <Crumb to="/">Dashboard</Crumb>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>Views</BreadcrumbItem>
-        <BreadcrumbSeparator />
+        <BreadcrumbSeparator className="hidden sm:block" />
+        <BreadcrumbItem className="hidden sm:inline-flex">Views</BreadcrumbItem>
+        <BreadcrumbSeparator className="hidden sm:block" />
         <BreadcrumbItem>
           <Switcher
             label={current?.name ?? "Unknown view"}
@@ -122,7 +123,7 @@ export function AppBreadcrumbs() {
   return (
     <Trail>
       <Crumb to="/">Dashboard</Crumb>
-      <BreadcrumbSeparator />
+      <BreadcrumbSeparator className="hidden sm:block" />
       <BreadcrumbItem>
         <BreadcrumbPage>{leaf}</BreadcrumbPage>
       </BreadcrumbItem>
@@ -138,7 +139,13 @@ function Trail({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Crumb({ to, children }: { to: string; children: React.ReactNode }) {
+function Crumb({
+  to,
+  children,
+}: {
+  to: "/" | "/machines"
+  children: React.ReactNode
+}) {
   return (
     <BreadcrumbItem className="hidden sm:inline-flex">
       <BreadcrumbLink render={<Link to={to} />}>{children}</BreadcrumbLink>
@@ -179,24 +186,27 @@ function Switcher({
         }
       />
       <DropdownMenuContent align="start" className="min-w-56">
-        <DropdownMenuLabel>{groupLabel}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {options.map((option) => (
-          <DropdownMenuItem
-            key={option.id}
-            onClick={() => onSelect(option.id)}
-          >
-            <Check
-              className={option.id === currentId ? undefined : "opacity-0"}
-            />
-            <span className="flex-1 truncate">{option.label}</span>
-            {option.hint ? (
-              <span className="text-xs text-muted-foreground">
-                {option.hint}
-              </span>
-            ) : null}
-          </DropdownMenuItem>
-        ))}
+        {/* GroupLabel reads its context from Group, so both live together. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{groupLabel}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {options.map((option) => (
+            <DropdownMenuItem
+              key={option.id}
+              onClick={() => onSelect(option.id)}
+            >
+              <Check
+                className={option.id === currentId ? undefined : "opacity-0"}
+              />
+              <span className="flex-1 truncate">{option.label}</span>
+              {option.hint ? (
+                <span className="text-xs text-muted-foreground">
+                  {option.hint}
+                </span>
+              ) : null}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -1,3 +1,4 @@
+import { AppBreadcrumbs } from "@/components/app-breadcrumbs"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import {
@@ -21,7 +22,7 @@ const RootLayout = () => (
     <SidebarInset>
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger className="-ml-1" />
-        <span className="text-sm font-medium">SNMP Monitor</span>
+        <AppBreadcrumbs />
         <div className="ml-auto">
           <ThemeToggle />
         </div>

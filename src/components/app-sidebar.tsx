@@ -13,10 +13,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Link, useLocation } from "@tanstack/react-router"
-import { Activity, LayoutDashboard, Server, Wrench } from "lucide-react"
+import { Activity, Server, Wrench } from "lucide-react"
 
 const navItems = [
-  { title: "Dashboard", to: "/", icon: LayoutDashboard },
   { title: "Machines", to: "/machines", icon: Server },
   { title: "Admin", to: "/admin", icon: Wrench },
 ] as const
@@ -52,10 +51,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive =
-                  item.to === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.to)
+                const isActive = pathname.startsWith(item.to)
                 return (
                   <SidebarMenuItem key={item.to}>
                     <SidebarMenuButton

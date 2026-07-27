@@ -8,6 +8,9 @@ import { useClock } from "@/hooks/use-clock"
  * on time. Counting down to the round the interval implies is what makes the
  * two agree.
  */
+/** Rounds an anchor may be behind before the loop is called late, not stale. */
+const OVERDUE_AFTER_INTERVALS = 3
+
 export function NextTickCountdown({
   lastTickAt,
   intervalSeconds,
@@ -18,16 +21,30 @@ export function NextTickCountdown({
   className?: string
 }) {
   const now = useClock(1000)
-  const dueAt = Date.parse(lastTickAt) + intervalSeconds * 1000
+  const period = intervalSeconds * 1000
+  const since = now - Date.parse(lastTickAt)
 
-  if (!Number.isFinite(dueAt)) return <span className={className}>—</span>
+  if (!Number.isFinite(since) || period <= 0) {
+    return <span className={className}>—</span>
+  }
 
-  const remainingSeconds = Math.ceil((dueAt - now) / 1000)
+  // The anchor is a round that has already finished, and it is only re-read
+  // once a round at best — so it is routinely a round or two old. Counting
+  // down to `anchor + interval` then reads "due" for the whole gap. Stepping
+  // the anchor forward in whole intervals instead keeps the number inside the
+  // interval, which is the only range a loop running on time can be in.
+  const remaining = Math.ceil(
+    (since < 0 ? period : period - (since % period)) / 1000
+  )
+
   return (
     <span className={className}>
-      {/* Past due means the tick is running, or the loop has stalled — either
-          way the number to show is not a negative one. */}
-      {remainingSeconds <= 0 ? "due" : `in ${remainingSeconds} s`}
+      {/* Further behind than the loop's own cadence explains: the round is
+          overrunning, or nothing is ticking. Projecting through that would
+          show a healthy countdown for a collector that has stopped. */}
+      {since > period * OVERDUE_AFTER_INTERVALS
+        ? "overdue"
+        : `in ${remaining} s`}
     </span>
   )
 }

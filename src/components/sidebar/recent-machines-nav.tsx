@@ -69,7 +69,7 @@ export function RecentMachinesNav() {
                     health={machineHealth({
                       enabled: machine.enabled,
                       latestTs: sample?.ts,
-                      failing: (health[machine.mac]?.failure ?? 0) > 0,
+                      failing: health[machine.mac]?.failing,
                       now,
                     })}
                   />

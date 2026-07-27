@@ -1,6 +1,7 @@
 import { NextTickCountdown } from "@/components/collector-countdown"
 import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
 import { RelativeTime } from "@/components/relative-time"
+import { MachineStatusDot } from "@/components/sidebar/machine-status-dot"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,8 +28,10 @@ import { formatCount, formatDuration } from "@/lib/format"
 import {
   cacheStatsQueryOptions,
   cachedServersQueryOptions,
+  collectorIntervalSeconds,
   collectorMachineHealth,
   collectorStatusQueryOptions,
+  tickSummary,
   useFlushCacheMutation,
   useForceTickMutation,
 } from "@/lib/queries/admin"
@@ -69,6 +72,16 @@ function AdminPage() {
   const before = cutoff?.toISOString()
 
   const health = Object.values(collectorMachineHealth(collector))
+  const intervalSeconds = collectorIntervalSeconds(collector)
+  const ticks = collector?.tick_count ?? collector?.ticks
+  // What the last round did, which is the first thing worth knowing when
+  // every machine reads zero samples.
+  const lastRound =
+    typeof collector?.last_inserted === "number" ||
+    typeof collector?.last_failed === "number"
+      ? `${collector.last_inserted ?? 0} stored / ${collector.last_failed ?? 0} failed`
+      : null
+
   const labelFor = (mac: string) => {
     const machine = machines?.find((entry) => entry.mac === mac)
     return machine ? machineName(machine) : mac
@@ -90,7 +103,14 @@ function AdminPage() {
               disabled={tick.isPending}
               onClick={() =>
                 tick.mutate(undefined, {
-                  onSuccess: () => toast.success("Collection round finished"),
+                  onSuccess: (result) => {
+                    const { stored, failed } = tickSummary(result)
+                    toast.success(
+                      stored === null && failed === null
+                        ? "Collection round finished"
+                        : `Round finished: ${stored ?? 0} stored, ${failed ?? 0} failed`
+                    )
+                  },
                   onError: (error) =>
                     toast.error(errorMessage(error, "Force tick failed")),
                 })
@@ -126,11 +146,10 @@ function AdminPage() {
             <Fact
               label="Next tick"
               value={
-                lastTickAt &&
-                typeof collector?.interval_seconds === "number" ? (
+                lastTickAt && intervalSeconds !== null ? (
                   <NextTickCountdown
                     lastTickAt={lastTickAt}
-                    intervalSeconds={collector.interval_seconds}
+                    intervalSeconds={intervalSeconds}
                   />
                 ) : (
                   "—"
@@ -139,34 +158,46 @@ function AdminPage() {
             />
             <Fact
               label="Ticks"
-              value={
-                typeof collector?.ticks === "number"
-                  ? formatCount(collector.ticks)
-                  : "—"
-              }
+              value={typeof ticks === "number" ? formatCount(ticks) : "—"}
             />
+            <Fact label="Last round" value={lastRound ?? "—"} />
           </dl>
+          {(collector?.last_tick_error ?? collector?.last_error) ? (
+            <p className="text-sm text-destructive">
+              {collector.last_tick_error ?? collector.last_error}
+            </p>
+          ) : null}
           {health.length > 0 ? (
             <div className="flex flex-col">
               {health.map((entry, index) => (
                 <div key={entry.mac}>
                   {index > 0 ? <Separator /> : null}
                   <div className="flex items-center gap-3 px-1 py-2 text-sm">
+                    <MachineStatusDot
+                      health={entry.failing ? "failing" : "reporting"}
+                    />
                     <span className="flex-1 truncate">
                       {labelFor(entry.mac)}
                     </span>
+                    {/* Shown whenever the collector still remembers it: an
+                        error that has since been superseded by a good poll is
+                        history, so the dot above is what says "now". */}
                     {entry.lastError ? (
                       <span className="truncate text-xs text-destructive">
                         {entry.lastError}
+                        {entry.lastErrorAt ? (
+                          <>
+                            {" · "}
+                            <RelativeTime iso={entry.lastErrorAt} />
+                          </>
+                        ) : null}
                       </span>
                     ) : null}
-                    <Badge variant="secondary">{entry.success ?? 0} ok</Badge>
+                    <Badge variant="secondary">{entry.okCount ?? 0} ok</Badge>
                     <Badge
-                      variant={
-                        (entry.failure ?? 0) > 0 ? "destructive" : "secondary"
-                      }
+                      variant={entry.failing ? "destructive" : "secondary"}
                     >
-                      {entry.failure ?? 0} failed
+                      {entry.failCount ?? 0} failed
                     </Badge>
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-// Mirrors the FastAPI OpenAPI document (SNMP metrics API 0.6.0). OpenStack is
+// Mirrors the FastAPI OpenAPI document (SNMP metrics API 0.6.2). OpenStack is
 // the source of truth for machine facts when it knows the address, so a
 // machine's hardware limits come from the OpenStack flavor — but a machine
 // absent from the cache is still a machine, and everything here treats those
@@ -31,6 +31,13 @@ export const machineSchema = z.object({
   ipv4: z.string(),
   label: z.string().nullable(),
   enabled: z.boolean(),
+  /**
+   * Registered with a client-supplied MAC because OpenStack has no record of
+   * the address. Such a machine never carries server facts and the collector
+   * leaves its address alone — which is what makes `ipv4` patchable here and
+   * nowhere else. Defaulted so a backend older than 0.6.2 still parses.
+   */
+  external: z.boolean().default(false),
   created_at: z.string(),
   updated_at: z.string(),
   // Null when OpenStack no longer knows the MAC — reported, never faked.
@@ -39,8 +46,24 @@ export const machineSchema = z.object({
 })
 export type Machine = z.infer<typeof machineSchema>
 
+/** Colon- or hyphen-separated, normalized to the lowercase colon form. */
+export const macSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i,
+    "Enter a MAC like fa:16:3e:00:00:01"
+  )
+  .transform((value) => value.toLowerCase().replaceAll("-", ":"))
+
 export const machineCreateSchema = z.object({
   ipv4: z.ipv4("Enter a valid IPv4 address"),
+  /**
+   * Required only outside the OpenStack fleet: with no record to resolve, the
+   * client is the only thing that can name the machine. Sending one for an
+   * address OpenStack does know is allowed but has to agree with the fleet.
+   */
+  mac: macSchema.optional(),
   label: z.string().max(200).optional(),
 })
 export type MachineCreate = z.infer<typeof machineCreateSchema>
@@ -48,6 +71,11 @@ export type MachineCreate = z.infer<typeof machineCreateSchema>
 export const machineUpdateSchema = z.object({
   label: z.string().max(200).nullish(),
   enabled: z.boolean().nullish(),
+  /**
+   * External machines only. OpenStack owns a managed machine's address and the
+   * collector re-reads it every tick, so a patch there lasts one interval.
+   */
+  ipv4: z.ipv4("Enter a valid IPv4 address").optional(),
 })
 export type MachineUpdate = z.infer<typeof machineUpdateSchema>
 
@@ -210,24 +238,42 @@ export const cacheFlushedSchema = z.object({
 export type CacheFlushed = z.infer<typeof cacheFlushedSchema>
 
 // The collector status body is untyped on the backend. Everything the UI reads
-// is optional so a payload change degrades the panel instead of breaking it.
+// is optional so a payload change degrades the panel instead of breaking it,
+// and the counters are named twice over: `ok_count`/`fail_count` is what the
+// collector emits, the rest are aliases kept for older builds of it.
 export const collectorMachineStatSchema = z.looseObject({
   mac: z.string().nullish(),
+  ipv4: z.string().nullish(),
+  ok_count: optionalNumber,
+  fail_count: optionalNumber,
   success: optionalNumber,
   failure: optionalNumber,
   successes: optionalNumber,
   failures: optionalNumber,
   last_error: z.string().nullish(),
+  /** When each outcome last happened — which of the two is newer is what
+   *  says whether the machine is failing now or merely has failed before. */
+  last_ok: z.string().nullish(),
+  last_error_at: z.string().nullish(),
   last_success_at: z.string().nullish(),
 })
 export type CollectorMachineStat = z.infer<typeof collectorMachineStatSchema>
 
 export const collectorStatusSchema = z.looseObject({
+  enabled: z.boolean().nullish(),
   running: z.boolean().nullish(),
   interval_seconds: optionalNumber,
+  /** The cadence the loop actually achieved, interval plus its own drift. */
+  effective_interval_seconds: optionalNumber,
+  overrun_count: optionalNumber,
+  tick_count: optionalNumber,
   ticks: optionalNumber,
   last_tick_at: z.string().nullish(),
   last_tick_duration_seconds: optionalNumber,
+  /** Machines that produced a sample, and that failed, in the last round. */
+  last_inserted: optionalNumber,
+  last_failed: optionalNumber,
+  last_tick_error: z.string().nullish(),
   last_error: z.string().nullish(),
   machines: z
     .union([
@@ -239,9 +285,10 @@ export const collectorStatusSchema = z.looseObject({
 export type CollectorStatus = z.infer<typeof collectorStatusSchema>
 
 export const forceTickResultSchema = z.looseObject({
+  stored: optionalNumber,
+  failed: optionalNumber,
   polled: optionalNumber,
   succeeded: optionalNumber,
-  failed: optionalNumber,
   duration_seconds: optionalNumber,
 })
 export type ForceTickResult = z.infer<typeof forceTickResultSchema>

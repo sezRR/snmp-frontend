@@ -8,8 +8,10 @@ import { ApiError } from "@/lib/api/client"
 import { formatDuration } from "@/lib/format"
 import {
   cacheStatsQueryOptions,
+  collectorIntervalSeconds,
   collectorMachineHealth,
   collectorStatusQueryOptions,
+  tickSummary,
   useFlushCacheMutation,
   useForceTickMutation,
 } from "@/lib/queries/admin"
@@ -40,17 +42,20 @@ export function CollectorHealthFooter() {
   const lastTickAt = useLastTickAt(collector)
 
   const health = Object.values(collectorMachineHealth(collector))
-  const failing = health.filter((machine) => (machine.failure ?? 0) > 0).length
+  const failing = health.filter((machine) => machine.failing).length
   const running = collector?.running ?? !collectorFailed
+  const intervalSeconds = collectorIntervalSeconds(collector)
 
   const handleTick = () => {
     tick.mutate(undefined, {
       onSuccess: (result) => {
-        const polled = result.polled ?? null
+        const { polled, failed } = tickSummary(result)
         toast.success(
           polled === null
             ? "Collection round finished"
-            : `Polled ${polled} machine${polled === 1 ? "" : "s"}`
+            : `Polled ${polled} machine${polled === 1 ? "" : "s"}${
+                failed ? `, ${failed} failed` : ""
+              }`
         )
       },
       onError: (error) => toast.error(errorMessage(error, "Force tick failed")),
@@ -103,13 +108,13 @@ export function CollectorHealthFooter() {
               </dd>
             </>
           ) : null}
-          {lastTickAt && typeof collector?.interval_seconds === "number" ? (
+          {lastTickAt && intervalSeconds !== null ? (
             <>
               <dt>Next tick</dt>
               <dd className="text-right tabular-nums">
                 <NextTickCountdown
                   lastTickAt={lastTickAt}
-                  intervalSeconds={collector.interval_seconds}
+                  intervalSeconds={intervalSeconds}
                 />
               </dd>
             </>

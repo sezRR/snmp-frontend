@@ -25,7 +25,7 @@ export function MachineGrid({ machines }: { machines: Machine[] }) {
           key={machine.mac}
           machine={machine}
           sample={samples[machine.mac]}
-          failing={(health[machine.mac]?.failure ?? 0) > 0}
+          failing={health[machine.mac]?.failing}
         />
       ))}
     </div>

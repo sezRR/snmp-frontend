@@ -94,7 +94,7 @@ function MachinesPage() {
                       health={machineHealth({
                         enabled: machine.enabled,
                         latestTs: sample?.ts,
-                        failing: (health[machine.mac]?.failure ?? 0) > 0,
+                        failing: health[machine.mac]?.failing,
                         now,
                       })}
                     />
@@ -123,6 +123,8 @@ function MachinesPage() {
                       <Badge variant="outline" className="hidden sm:flex">
                         {machine.openstack.flavor.name}
                       </Badge>
+                    ) : machine.external ? (
+                      <Badge variant="outline">external</Badge>
                     ) : (
                       <Badge variant="destructive">not in OpenStack</Badge>
                     )}

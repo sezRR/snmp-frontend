@@ -42,16 +42,18 @@ interface AddMachineDialogProps {
 }
 
 /**
- * Registration takes addresses only. The cached OpenStack servers are offered
- * first because picking them avoids typos and registers several at once, but
- * an address the cache does not know is registered all the same — it just
- * arrives without server facts until the lookup catches up.
+ * Registration takes an address, plus a MAC when the address is outside the
+ * OpenStack fleet. The cached servers are offered first because picking them
+ * avoids typos, registers several at once and resolves their MACs for free;
+ * anything else is registered as an external machine, named by the MAC typed
+ * here since nothing upstream can name it.
  */
 export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const [open, setOpen] = React.useState(false)
   const [picked, setPicked] = React.useState<string[]>([])
   const [attached, setAttached] = React.useState<string[]>([])
   const [ipv4, setIpv4] = React.useState("")
+  const [mac, setMac] = React.useState("")
   const [label, setLabel] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
 
@@ -76,10 +78,17 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     setPicked([])
     setAttached([])
     setIpv4("")
+    setMac("")
     setLabel("")
     setError(null)
     register.reset()
   }
+
+  const typedAddress = ipv4.trim()
+  // The cache is exactly what the backend resolves a MAC from, so an address
+  // missing here is the address that has to be named by hand.
+  const cached = (servers ?? []).find((entry) => entry.ipv4 === typedAddress)
+  const macRequired = Boolean(typedAddress) && servers !== undefined && !cached
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -92,14 +101,32 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
       bodies.push({ ipv4: address, label: server?.name })
     }
 
-    const typed = ipv4.trim()
-    if (typed) {
+    if (typedAddress) {
       const parsed = machineCreateSchema.safeParse({
-        ipv4: typed,
+        ipv4: typedAddress,
+        mac: mac.trim() || undefined,
         label: label.trim() || undefined,
       })
       if (!parsed.success) {
         setError(parsed.error.issues[0]?.message ?? "Enter a valid address")
+        return
+      }
+      if (macRequired && !parsed.data.mac) {
+        setError(
+          `OpenStack has no record of ${typedAddress} — enter its MAC to register it as an external machine`
+        )
+        return
+      }
+      // The fleet names its own machines: sending a MAC that disagrees with
+      // the lookup is a 422, and catching it here says which one is wrong.
+      if (
+        cached &&
+        parsed.data.mac &&
+        parsed.data.mac !== cached.mac.toLowerCase().replaceAll("-", ":")
+      ) {
+        setError(
+          `OpenStack knows ${typedAddress} as ${cached.mac} — clear the MAC or correct it`
+        )
         return
       }
       bodies.push(parsed.data)
@@ -158,7 +185,7 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     })
   }
 
-  const total = picked.length + attached.length + (ipv4.trim() ? 1 : 0)
+  const total = picked.length + attached.length + (typedAddress ? 1 : 0)
 
   return (
     <Dialog
@@ -183,8 +210,8 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
           </DialogTitle>
           <DialogDescription>
             Pick as many cached OpenStack servers as you like, or type an
-            address. Addresses OpenStack does not know are polled too, without
-            server facts.
+            address. An address OpenStack does not know is registered as an
+            external machine, identified by the MAC you give it.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -260,13 +287,34 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
                 id="machine-ipv4"
                 placeholder="192.168.1.10"
                 value={ipv4}
-                aria-invalid={error && ipv4.trim() ? true : undefined}
+                aria-invalid={error && typedAddress ? true : undefined}
                 onChange={(event) => setIpv4(event.target.value)}
               />
               <FieldDescription>
-                Any reachable address. Machines OpenStack has no record of are
-                polled all the same; their flavor limits stay unknown until the
-                lookup finds them.
+                Any reachable address. One OpenStack has no record of is polled
+                all the same, as an external machine — with no flavor limits and
+                an address only you can change.
+              </FieldDescription>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="machine-mac">
+                MAC address {macRequired ? null : "(optional)"}
+              </FieldLabel>
+              <Input
+                id="machine-mac"
+                placeholder="fa:16:3e:00:00:01"
+                className="font-mono"
+                value={mac}
+                aria-invalid={
+                  error && macRequired && !mac.trim() ? true : undefined
+                }
+                onChange={(event) => setMac(event.target.value)}
+              />
+              <FieldDescription>
+                {macRequired
+                  ? `OpenStack has no record of ${typedAddress}, so its MAC — the machine's identity here — has to come from you.`
+                  : "Only needed for addresses outside the OpenStack fleet; the lookup resolves the rest."}
               </FieldDescription>
             </Field>
 

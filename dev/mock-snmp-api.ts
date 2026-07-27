@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import type { Plugin } from "vite"
 
 // Dev-only stand-in for the FastAPI backend. Serves the same /api contract
-// (REST + SSE) as SNMP metrics API 0.6.0 so the UI is fully exercisable before
+// (REST + SSE) as SNMP metrics API 0.6.2 so the UI is fully exercisable before
 // the real backend is reachable. Requests bypass it entirely once
 // VITE_API_BASE_URL points at a real origin.
 
@@ -29,6 +29,8 @@ interface MachineRow {
   ipv4: string
   label: string | null
   enabled: boolean
+  /** Registered with a client-supplied MAC, outside the OpenStack fleet. */
+  external: boolean
   created_at: string
   updated_at: string
 }
@@ -126,6 +128,7 @@ const machines: MachineRow[] = [
     ipv4: "192.168.1.11",
     label: "core-worker-01",
     enabled: true,
+    external: false,
     created_at: new Date(Date.now() - 86_400_000).toISOString(),
     updated_at: now(),
   },
@@ -134,6 +137,7 @@ const machines: MachineRow[] = [
     ipv4: "192.168.1.12",
     label: null,
     enabled: true,
+    external: false,
     created_at: new Date(Date.now() - 43_200_000).toISOString(),
     updated_at: now(),
   },
@@ -142,7 +146,19 @@ const machines: MachineRow[] = [
     ipv4: "192.168.1.21",
     label: "edge-proxy",
     enabled: true,
+    external: false,
     created_at: new Date(Date.now() - 7_200_000).toISOString(),
+    updated_at: now(),
+  },
+  // A bare-metal box outside the fleet, so the external paths — no server
+  // facts, a patchable address — are visible without registering one first.
+  {
+    mac: "02:42:ac:11:00:07",
+    ipv4: "10.90.0.7",
+    label: "lab-bench-01",
+    enabled: true,
+    external: true,
+    created_at: new Date(Date.now() - 21_600_000).toISOString(),
     updated_at: now(),
   },
 ]
@@ -192,46 +208,72 @@ const knownToOpenStack = (mac: string): boolean =>
 const visibleServers = (): ServerInfo[] =>
   openstackServers.filter((server) => knownToOpenStack(server.mac))
 
+interface MachineStat {
+  mac: string
+  ipv4: string
+  ok_count: number
+  fail_count: number
+  last_ok: string | null
+  last_error: string | null
+  last_error_at: string | null
+}
+
 const collector = {
+  enabled: true,
   running: true,
   interval_seconds: POLL_INTERVAL_SECONDS,
-  ticks: 412,
+  effective_interval_seconds: POLL_INTERVAL_SECONDS,
+  overrun_count: 0,
+  tick_count: 412,
   last_tick_at: now(),
   last_tick_duration_seconds: 0.42,
-  machines: {} as Record<
-    string,
-    { mac: string; success: number; failure: number; last_error: string | null }
-  >,
+  last_inserted: 0,
+  last_failed: 0,
+  last_tick_error: null as string | null,
+  machines: {} as Record<string, MachineStat>,
 }
+
+const statFor = (machine: MachineRow): MachineStat =>
+  (collector.machines[machine.mac] ??= {
+    mac: machine.mac,
+    ipv4: machine.ipv4,
+    ok_count: 0,
+    fail_count: 0,
+    last_ok: null,
+    last_error: null,
+    last_error_at: null,
+  })
 
 /** One collection round, shared by the timer and the force-tick endpoint. */
 function runTick() {
-  collector.ticks += 1
-  collector.last_tick_at = now()
+  const at = now()
+  collector.tick_count += 1
+  collector.last_tick_at = at
   collector.last_tick_duration_seconds = round(0.2 + Math.random() * 0.5)
 
-  let succeeded = 0
+  let stored = 0
   let failed = 0
   for (const machine of machines) {
-    const stat = (collector.machines[machine.mac] ??= {
-      mac: machine.mac,
-      success: 0,
-      failure: 0,
-      last_error: null,
-    })
+    const stat = statFor(machine)
+    stat.ipv4 = machine.ipv4
     if (!machine.enabled) continue
     const error = FAULT_ERRORS[faultOf(machine.mac)]
     if (error) {
-      stat.failure += 1
+      stat.fail_count += 1
+      // The error and its timestamp both survive a later success: which of
+      // last_ok and last_error_at is newer is what says how the poll went.
       stat.last_error = error
+      stat.last_error_at = at
       failed += 1
     } else {
-      stat.success += 1
-      stat.last_error = null
-      succeeded += 1
+      stat.ok_count += 1
+      stat.last_ok = at
+      stored += 1
     }
   }
-  return { polled: succeeded + failed, succeeded, failed }
+  collector.last_inserted = stored
+  collector.last_failed = failed
+  return { stored, failed }
 }
 
 const cache = {
@@ -247,23 +289,20 @@ const cache = {
 for (const machine of machines) {
   collector.machines[machine.mac] = {
     mac: machine.mac,
-    success: 380 + Math.floor(Math.random() * 30),
-    failure: 0,
+    ipv4: machine.ipv4,
+    ok_count: 380 + Math.floor(Math.random() * 30),
+    fail_count: 0,
+    last_ok: now(),
     last_error: null,
+    last_error_at: null,
   }
 }
 
-/**
- * A MAC for an address OpenStack does not know. Locally-administered prefix
- * (02:) plus the four octets, so the same address always registers as the same
- * machine across restarts.
- */
-function syntheticMac(ipv4: string): string {
-  const octets = ipv4
-    .split(".")
-    .map((part) => (Number(part) & 0xff).toString(16).padStart(2, "0"))
-  return ["02", "00", ...octets].join(":")
-}
+const MAC_PATTERN = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/
+
+/** Both separators are accepted; the colon form is what gets stored. */
+const normalizeMac = (value: string): string =>
+  value.trim().toLowerCase().replaceAll("-", ":")
 
 function serverFor(mac: string): ServerInfo | null {
   if (!cache.populated) return null
@@ -272,12 +311,24 @@ function serverFor(mac: string): ServerInfo | null {
 }
 
 function machineResponse(machine: MachineRow) {
-  const openstack = serverFor(machine.mac)
+  // An external machine has no record to look up, by definition.
+  const openstack = machine.external ? null : serverFor(machine.mac)
   return { ...machine, openstack, openstack_found: openstack !== null }
 }
 
 const MIB = 1024 ** 2
 const GIB = 1024 ** 3
+
+/** The mount table of a host that does more than run one service. */
+const EXTRA_MOUNTS = [
+  { mount: "/home", device: "vdc1", gb: 200, base: 55 },
+  { mount: "/srv", device: "vdc2", gb: 100, base: 40 },
+  { mount: "/var/log", device: "vdd1", gb: 30, base: 70 },
+  { mount: "/var/lib/docker", device: "vdd2", gb: 120, base: 62 },
+  { mount: "/opt", device: "vde1", gb: 50, base: 25 },
+  { mount: "/data", device: "vde2", gb: 500, base: 81 },
+  { mount: "/boot", device: "vda2", gb: 1, base: 35 },
+]
 const LINK_SPEED_BPS = 10_000_000_000
 
 const clamp = (value: number, min: number, max: number) =>
@@ -316,6 +367,36 @@ function metricsAt(mac: string, timeMs: number) {
   // ~64 KiB per operation on the reads, ~16 KiB on the smaller writes.
   const iopsFor = (bytes: number, size: number) => round(bytes / size)
 
+  /**
+   * Extra filesystems, on a third of the fleet. Real hosts running containers
+   * report a mount table far longer than the two below — that is the case the
+   * disk card has to fold, so some of the mock fleet has to produce it.
+   */
+  const extraMounts = () => {
+    if (seed % 3 !== 0) return []
+    return EXTRA_MOUNTS.map((entry, index) => {
+      const total = entry.gb * GIB
+      const percent = clamp(
+        entry.base + wave(60 + index * 17, index) * 30 + jitter(0.4),
+        2,
+        99
+      )
+      const read = Math.round((0.2 + wave(19 + index, index) * 4) * MIB)
+      const write = Math.round((0.2 + wave(13 + index, index) * 3) * MIB)
+      return {
+        mount: entry.mount,
+        device: entry.device,
+        used_bytes: Math.round((percent / 100) * total),
+        total_bytes: total,
+        used_percent: round(percent),
+        read_bps: read,
+        write_bps: write,
+        read_iops: iopsFor(read, 64 * 1024),
+        write_iops: iopsFor(write, 16 * 1024),
+      }
+    })
+  }
+
   return {
     ts: new Date(timeMs).toISOString(),
     mac,
@@ -352,6 +433,7 @@ function metricsAt(mac: string, timeMs: number) {
           read_iops: iopsFor(varRead, 64 * 1024),
           write_iops: iopsFor(varWrite, 16 * 1024),
         },
+        ...extraMounts(),
       ],
       disk_io: {
         read_bps: rootRead + varRead,
@@ -496,10 +578,28 @@ export function mockSnmpApi(): Plugin {
                 detail: `Not an IPv4 address: ${ipv4 || "(missing)"}`,
               })
             }
-            const known = openstackServers.find((entry) => entry.ipv4 === ipv4)
-            // An address OpenStack has no record of is still registerable; the
-            // MAC is then whatever the poll itself reports.
-            const mac = known?.mac ?? syntheticMac(ipv4)
+            const supplied =
+              typeof body.mac === "string" ? normalizeMac(body.mac) : null
+            if (supplied !== null && !MAC_PATTERN.test(supplied)) {
+              return json(res, 422, {
+                detail: `Not a MAC address: ${String(body.mac)}`,
+              })
+            }
+            const known = visibleServers().find((entry) => entry.ipv4 === ipv4)
+            // Outside the fleet nothing can resolve the identity, so the client
+            // supplies it. Inside it, only the fleet's own MAC is accepted —
+            // otherwise the two would disagree about what is being polled.
+            if (!known && supplied === null) {
+              return json(res, 422, {
+                detail: `OpenStack has no record of ${ipv4}: supply its MAC to register it as an external machine`,
+              })
+            }
+            if (known && supplied !== null && supplied !== known.mac) {
+              return json(res, 422, {
+                detail: `OpenStack knows ${ipv4} as ${known.mac}, not ${supplied}`,
+              })
+            }
+            const mac = known?.mac ?? (supplied as string)
             if (machines.some((machine) => machine.mac === mac)) {
               return json(res, 409, {
                 detail: `Machine ${mac} is already registered`,
@@ -510,16 +610,12 @@ export function mockSnmpApi(): Plugin {
               ipv4,
               label,
               enabled: true,
+              external: !known,
               created_at: now(),
               updated_at: now(),
             }
             machines.push(machine)
-            collector.machines[machine.mac] = {
-              mac: machine.mac,
-              success: 0,
-              failure: 0,
-              last_error: null,
-            }
+            statFor(machine)
             return json(res, 201, machineResponse(machine))
           }
 
@@ -541,6 +637,21 @@ export function mockSnmpApi(): Plugin {
               }
               if (typeof body.enabled === "boolean") {
                 machines[index].enabled = body.enabled
+              }
+              if (typeof body.ipv4 === "string") {
+                // OpenStack owns a managed machine's address and the collector
+                // re-reads it every tick, so patching it would last one round.
+                if (!machines[index].external) {
+                  return json(res, 422, {
+                    detail: `OpenStack owns the address of ${mac}; only external machines can be moved`,
+                  })
+                }
+                if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(body.ipv4)) {
+                  return json(res, 422, {
+                    detail: `Not an IPv4 address: ${body.ipv4}`,
+                  })
+                }
+                machines[index].ipv4 = body.ipv4
               }
               machines[index].updated_at = now()
               return json(res, 200, machineResponse(machines[index]))
@@ -721,15 +832,15 @@ export function mockSnmpApi(): Plugin {
 
           // --- admin ----------------------------------------------------
           if (path === "/admin/collector" && method === "GET") {
-            return json(res, 200, collector)
+            // The real loop reports its per-machine counters as a list.
+            return json(res, 200, {
+              ...collector,
+              machines: Object.values(collector.machines),
+            })
           }
 
           if (path === "/admin/collector/tick" && method === "POST") {
-            const result = runTick()
-            return json(res, 200, {
-              ...result,
-              duration_seconds: collector.last_tick_duration_seconds,
-            })
+            return json(res, 200, runTick())
           }
 
           if (path === "/admin/openstack/cache" && method === "GET") {

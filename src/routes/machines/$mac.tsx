@@ -6,6 +6,10 @@ import { LiveStatusIndicator } from "@/components/metrics/live-status-indicator"
 import { MetricsLineChart } from "@/components/metrics/metrics-line-chart"
 import { RadialMetricCard } from "@/components/metrics/radial-metric-card"
 import { TimeRangePicker } from "@/components/metrics/time-range-picker"
+import {
+  MachineStatusDot,
+  machineHealth,
+} from "@/components/sidebar/machine-status-dot"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -15,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useClock } from "@/hooks/use-clock"
 import { useMachineLiveMetrics } from "@/hooks/use-live-metrics"
 import {
   formatBps,
@@ -29,6 +34,10 @@ import {
   normalizeSample,
   statsRowToPoint,
 } from "@/lib/metrics"
+import {
+  collectorMachineHealth,
+  collectorStatusQueryOptions,
+} from "@/lib/queries/admin"
 import { machineName, machineQueryOptions } from "@/lib/queries/machines"
 import {
   latestMetricsQueryOptions,
@@ -74,6 +83,7 @@ function MachineDetailPage() {
   const { data: machine } = useSuspenseQuery(machineQueryOptions(mac))
   const { data: stats } = useSuspenseQuery(metricStatsQueryOptions(mac, range))
   const { data: latest } = useQuery(latestMetricsQueryOptions())
+  const { data: collector } = useQuery(collectorStatusQueryOptions())
   const { latest: liveSample, history, status } = useMachineLiveMetrics(mac)
 
   // The stats aggregate reads its own jsonb paths, so it can come back without
@@ -102,6 +112,11 @@ function MachineDetailPage() {
   const fallbackSample = samplesByMac(latest ?? [])[mac]
   const sample = liveSample ?? fallbackSample
   const snapshot = sample ? normalizeSample(sample, machine) : null
+
+  // Same dot as the grid and the sidebar: sample freshness, unless the
+  // collector says this machine's last poll failed outright.
+  const now = useClock()
+  const failing = collectorMachineHealth(collector)[mac]?.failing
 
   // The live card is exactly that: it starts empty on arrival and fills from
   // the stream, so it never mixes in history the user did not watch arrive.
@@ -136,14 +151,25 @@ function MachineDetailPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
+        <MachineStatusDot
+          className="size-2.5"
+          health={machineHealth({
+            enabled: machine.enabled,
+            latestTs: sample?.ts,
+            failing,
+            now,
+          })}
+        />
         <h1 className="text-lg font-semibold">{machineName(machine)}</h1>
         <Badge variant="secondary">{machine.ipv4}</Badge>
         <Badge variant="outline" className="font-mono">
           {machine.mac}
         </Badge>
         {!machine.enabled ? <Badge variant="secondary">disabled</Badge> : null}
-        {!machine.openstack_found ? (
-          <Badge variant="outline">no OpenStack record</Badge>
+        {machine.external ? (
+          <Badge variant="outline">external</Badge>
+        ) : !machine.openstack_found ? (
+          <Badge variant="destructive">not in OpenStack</Badge>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           <LiveStatusIndicator status={status} />
@@ -212,9 +238,11 @@ function MachineDetailPage() {
           <CardHeader>
             <CardTitle>OpenStack</CardTitle>
             <CardDescription>
-              No record of {machine.ipv4} in the lookup — registered by address,
-              or moved since. Everything below comes from the agent, so any
-              limit it does not report is shown as unknown.
+              {machine.external
+                ? `Registered as external: ${machine.ipv4} is outside the fleet, so its MAC and address are yours to set and the collector never moves them.`
+                : `No record of ${machine.ipv4} in the lookup — deleted or moved in OpenStack since registration.`}{" "}
+              Everything below comes from the agent, so any limit it does not
+              report is shown as unknown.
             </CardDescription>
           </CardHeader>
         </Card>

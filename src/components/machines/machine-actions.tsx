@@ -15,11 +15,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Field, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
 import type { Machine } from "@/lib/api/types"
+import { machineUpdateSchema } from "@/lib/api/types"
 import { useForceTickMutation } from "@/lib/queries/admin"
 import {
   machineName,
@@ -51,11 +58,13 @@ interface MachineActionsProps {
 }
 
 export function MachineActions({ machine }: MachineActionsProps) {
-  const [renaming, setRenaming] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
   const [confirmingDelete, setConfirmingDelete] = React.useState(false)
   const [confirmingPurge, setConfirmingPurge] = React.useState(false)
   const [cutoff, setCutoff] = React.useState<Date | undefined>(undefined)
   const [label, setLabel] = React.useState(machine.label ?? "")
+  const [ipv4, setIpv4] = React.useState(machine.ipv4)
+  const [editError, setEditError] = React.useState<string | null>(null)
 
   const navigate = useNavigate()
   // Only the machine's own detail page has to be left behind after a delete;
@@ -66,16 +75,35 @@ export function MachineActions({ machine }: MachineActionsProps) {
   const purge = usePurgeMachineMetricsMutation()
   const tick = useForceTickMutation()
 
-  const handleRename = (event: React.FormEvent) => {
+  const handleEdit = (event: React.FormEvent) => {
     event.preventDefault()
+
+    // Only an external machine's address is ours to move: OpenStack owns a
+    // managed one and the collector re-reads it on the next tick.
+    const address = ipv4.trim()
+    const movedTo =
+      machine.external && address !== machine.ipv4 ? address : undefined
+    if (movedTo !== undefined) {
+      const parsed = machineUpdateSchema.shape.ipv4.safeParse(movedTo)
+      if (!parsed.success) {
+        setEditError(parsed.error.issues[0]?.message ?? "Enter a valid address")
+        return
+      }
+    }
+    setEditError(null)
+
     update.mutate(
-      { mac: machine.mac, label: label.trim() || null },
+      { mac: machine.mac, label: label.trim() || null, ipv4: movedTo },
       {
         onSuccess: (updated) => {
-          toast.success(`Renamed to ${machineName(updated)}`)
-          setRenaming(false)
+          toast.success(
+            movedTo
+              ? `${machineName(updated)} now polled at ${updated.ipv4}`
+              : `Renamed to ${machineName(updated)}`
+          )
+          setEditing(false)
         },
-        onError: (error) => toast.error(errorMessage(error, "Rename failed")),
+        onError: (error) => toast.error(errorMessage(error, "Update failed")),
       }
     )
   }
@@ -147,11 +175,13 @@ export function MachineActions({ machine }: MachineActionsProps) {
           <DropdownMenuItem
             onClick={() => {
               setLabel(machine.label ?? "")
-              setRenaming(true)
+              setIpv4(machine.ipv4)
+              setEditError(null)
+              setEditing(true)
             }}
           >
             <Pencil />
-            Rename
+            {machine.external ? "Edit" : "Rename"}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleToggleEnabled}>
             <Power />
@@ -188,24 +218,47 @@ export function MachineActions({ machine }: MachineActionsProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={renaming} onOpenChange={setRenaming}>
+      <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Rename machine</DialogTitle>
+            <DialogTitle>
+              {machine.external ? "Edit machine" : "Rename machine"}
+            </DialogTitle>
             <DialogDescription>
-              The label is yours; the MAC and address come from OpenStack.
+              {machine.external
+                ? "An external machine's address is yours to move — nothing upstream knows where it went. Its MAC stays fixed as its identity."
+                : "The label is yours; the MAC and address come from OpenStack."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleRename}>
-            <Field>
-              <FieldLabel htmlFor="machine-label-edit">Label</FieldLabel>
-              <Input
-                id="machine-label-edit"
-                value={label}
-                placeholder={machine.ipv4}
-                onChange={(event) => setLabel(event.target.value)}
-              />
-            </Field>
+          <form onSubmit={handleEdit}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="machine-label-edit">Label</FieldLabel>
+                <Input
+                  id="machine-label-edit"
+                  value={label}
+                  placeholder={machine.ipv4}
+                  onChange={(event) => setLabel(event.target.value)}
+                />
+              </Field>
+              {machine.external ? (
+                <Field>
+                  <FieldLabel htmlFor="machine-ipv4-edit">
+                    IPv4 address
+                  </FieldLabel>
+                  <Input
+                    id="machine-ipv4-edit"
+                    value={ipv4}
+                    aria-invalid={editError ? true : undefined}
+                    onChange={(event) => setIpv4(event.target.value)}
+                  />
+                  <FieldDescription>
+                    Polling moves to this address on the next collection round.
+                  </FieldDescription>
+                </Field>
+              ) : null}
+              {editError ? <FieldError>{editError}</FieldError> : null}
+            </FieldGroup>
             <DialogFooter className="mt-6">
               <Button type="submit" disabled={update.isPending}>
                 {update.isPending ? <Spinner data-icon="inline-start" /> : null}

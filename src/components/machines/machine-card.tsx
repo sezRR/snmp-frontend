@@ -73,10 +73,13 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
             {!machine.enabled ? (
               <Badge variant="secondary">disabled</Badge>
             ) : null}
-            {/* Expected for a machine registered by address alone, so this
-                states the fact rather than flagging an error. */}
-            {!machine.openstack_found ? (
-              <Badge variant="outline">no OpenStack record</Badge>
+            {/* Expected for an external machine, so that states the fact. A
+                managed one missing its record is a machine that moved or was
+                deleted in OpenStack after registration — worth flagging. */}
+            {machine.external ? (
+              <Badge variant="outline">external</Badge>
+            ) : !machine.openstack_found ? (
+              <Badge variant="destructive">not in OpenStack</Badge>
             ) : null}
           </span>
           {machine.openstack ? (

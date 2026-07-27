@@ -2,6 +2,7 @@ import { api } from "@/lib/api/client"
 import {
   type CollectorMachineStat,
   type CollectorStatus,
+  type ForceTickResult,
   cacheFlushedSchema,
   cacheStatsSchema,
   collectorStatusSchema,
@@ -22,13 +23,26 @@ const serverListSchema = z.array(serverInfoSchema)
 export const adminQueryKey = ["admin"] as const
 
 /**
- * Bounds on the self-tuned poll. The collector runs at 5s, and fetching the
- * status body once a round would be a request per round for counters that
- * change slowly — "last tick" is read off the stream instead (useLastTickAt),
- * so this only has to keep the tallies and the loop's own state honest.
+ * Bounds on the self-tuned poll, which otherwise runs at the collector's own
+ * cadence. A round that polls nothing successfully puts no sample on the
+ * stream, so for a failing fleet this endpoint is the only evidence a round
+ * happened at all — the tallies, the failure reasons and "last tick" all go
+ * stale together if it is fetched more slowly than the loop ticks.
  */
-const MIN_STATUS_POLL_MS = 15_000
+const MIN_STATUS_POLL_MS = 5_000
 const MAX_STATUS_POLL_MS = 60_000
+
+/**
+ * The period the next round is due after. The loop reports what it actually
+ * achieved as well as what it was configured for, and the achieved figure is
+ * the one a countdown should be measured against.
+ */
+export function collectorIntervalSeconds(
+  status: CollectorStatus | undefined
+): number | null {
+  const seconds = status?.effective_interval_seconds ?? status?.interval_seconds
+  return typeof seconds === "number" && seconds > 0 ? seconds : null
+}
 
 export const collectorStatusQueryOptions = () =>
   queryOptions({
@@ -36,8 +50,8 @@ export const collectorStatusQueryOptions = () =>
     queryFn: () =>
       api.get("/admin/collector", { schema: collectorStatusSchema }),
     refetchInterval: (query) => {
-      const seconds = query.state.data?.interval_seconds
-      if (typeof seconds !== "number" || seconds <= 0) return MAX_STATUS_POLL_MS
+      const seconds = collectorIntervalSeconds(query.state.data)
+      if (seconds === null) return MAX_STATUS_POLL_MS
       return Math.min(
         MAX_STATUS_POLL_MS,
         Math.max(MIN_STATUS_POLL_MS, seconds * 1000)
@@ -88,9 +102,32 @@ export function useFlushCacheMutation() {
 
 export interface CollectorMachineHealth {
   mac: string
-  success: number | null
-  failure: number | null
+  okCount: number | null
+  failCount: number | null
+  lastOkAt: string | null
+  lastErrorAt: string | null
   lastError: string | null
+  /** Whether the *most recent* poll failed, not whether one ever has. */
+  failing: boolean
+}
+
+/**
+ * Is this machine failing right now?
+ *
+ * A lifetime failure count cannot answer that — a machine that failed once an
+ * hour ago and has answered every round since would stay red forever. The two
+ * outcome timestamps can: whichever is newer is what the last round did. Only
+ * a payload carrying neither falls back to the counter, and then a machine
+ * with nothing but failures is the one case that is unambiguous.
+ */
+function isFailing(stat: CollectorMachineStat, failCount: number | null) {
+  const okAt = stat.last_ok ?? stat.last_success_at ?? null
+  const errorAt = stat.last_error_at ?? null
+
+  if (errorAt && okAt) return Date.parse(errorAt) > Date.parse(okAt)
+  if (errorAt) return true
+  if (okAt) return false
+  return (failCount ?? 0) > 0
 }
 
 /** The status body reports per-machine counters as either a list or a map. */
@@ -107,12 +144,31 @@ export function collectorMachineHealth(
   for (const [key, stat] of entries) {
     const mac = stat.mac ?? key
     if (!mac) continue
+    const okCount = stat.ok_count ?? stat.success ?? stat.successes ?? null
+    const failCount = stat.fail_count ?? stat.failure ?? stat.failures ?? null
     health[mac] = {
       mac,
-      success: stat.success ?? stat.successes ?? null,
-      failure: stat.failure ?? stat.failures ?? null,
+      okCount,
+      failCount,
+      lastOkAt: stat.last_ok ?? stat.last_success_at ?? null,
+      lastErrorAt: stat.last_error_at ?? null,
       lastError: stat.last_error ?? null,
+      failing: isFailing(stat, failCount),
     }
   }
   return health
+}
+
+/** What a forced round did, however the backend chose to phrase it. */
+export function tickSummary(result: ForceTickResult): {
+  stored: number | null
+  failed: number | null
+  polled: number | null
+} {
+  const stored = result.stored ?? result.succeeded ?? null
+  const failed = result.failed ?? null
+  const polled =
+    result.polled ??
+    (stored === null && failed === null ? null : (stored ?? 0) + (failed ?? 0))
+  return { stored, failed, polled }
 }

@@ -1,7 +1,12 @@
 import { cn } from "@/lib/utils"
 
-/** How fresh a sample has to be before a machine counts as reporting. */
-const STALE_AFTER_MS = 120_000
+/**
+ * How fresh a sample has to be before a machine counts as reporting. The
+ * collector polls every 5 seconds, so this is several missed rounds — enough
+ * slack for a slow round or a reconnecting stream, short enough that a machine
+ * that has genuinely gone quiet does not keep a green dot for minutes.
+ */
+const STALE_AFTER_MS = 30_000
 
 export type MachineHealth = "reporting" | "stale" | "failing" | "disabled"
 

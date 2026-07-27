@@ -1,3 +1,5 @@
+import { AddMachineDialog } from "@/components/machines/add-machine-dialog"
+import { DeregisterMachinesDialog } from "@/components/machines/deregister-machines-dialog"
 import { FleetSummary } from "@/components/machines/fleet-summary"
 import { MachineGrid } from "@/components/machines/machine-grid"
 import { MachineToolbar } from "@/components/machines/machine-toolbar"
@@ -9,6 +11,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import { RemoveFromViewDialog } from "@/components/views/remove-from-view-dialog"
 import { ViewDialog } from "@/components/views/view-dialog"
 import { useMachineSamples } from "@/hooks/use-machine-samples"
 import {
@@ -96,10 +99,22 @@ function ViewPage() {
             registered
           </span>
         </div>
-        <Button variant="outline" onClick={() => setEditing(true)}>
-          <Pencil data-icon="inline-start" />
-          Edit view
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Registering from inside a view assigns the machine to it. */}
+          <AddMachineDialog view={view} />
+          {members.length > 0 ? (
+            <>
+              <RemoveFromViewDialog view={view} members={members} />
+              {/* Scoped to the view: bulk deregistration here cannot reach a
+                  machine the user is not looking at. */}
+              <DeregisterMachinesDialog machines={members} />
+            </>
+          ) : null}
+          <Button variant="outline" onClick={() => setEditing(true)}>
+            <Pencil data-icon="inline-start" />
+            Edit view
+          </Button>
+        </div>
       </div>
       {members.length === 0 ? (
         <Empty>
@@ -109,9 +124,12 @@ function ViewPage() {
             </EmptyMedia>
             <EmptyTitle>Nothing in this view</EmptyTitle>
             <EmptyDescription>
-              Every machine it referenced has been deregistered.
+              {view.macs.length > 0
+                ? "Every machine it referenced has been deregistered."
+                : "Add machines to fill it."}
             </EmptyDescription>
           </EmptyHeader>
+          <AddMachineDialog view={view} />
         </Empty>
       ) : (
         <>

@@ -1,6 +1,7 @@
 import { MachineActions } from "@/components/machines/machine-actions"
 import { BandwidthCard } from "@/components/metrics/bandwidth-card"
 import { DiskCard } from "@/components/metrics/disk-card"
+import { DiskIoCard } from "@/components/metrics/disk-io-card"
 import { LiveStatusIndicator } from "@/components/metrics/live-status-indicator"
 import { MetricsLineChart } from "@/components/metrics/metrics-line-chart"
 import { RadialMetricCard } from "@/components/metrics/radial-metric-card"
@@ -15,7 +16,13 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMachineLiveMetrics } from "@/hooks/use-live-metrics"
-import { formatBps, formatPercent, formatUsage } from "@/lib/format"
+import {
+  formatBps,
+  formatBytesRate,
+  formatIops,
+  formatPercent,
+  formatUsage,
+} from "@/lib/format"
 import { mergeLiveIntoPoints } from "@/lib/live-buckets"
 import {
   type MetricsSnapshot,
@@ -67,8 +74,25 @@ function MachineDetailPage() {
   const { data: machine } = useSuspenseQuery(machineQueryOptions(mac))
   const { data: stats } = useSuspenseQuery(metricStatsQueryOptions(mac, range))
   const { data: latest } = useQuery(latestMetricsQueryOptions())
-  const { data: recent } = useQuery(recentSamplesQueryOptions(mac))
   const { latest: liveSample, history, status } = useMachineLiveMetrics(mac)
+
+  // The stats aggregate reads its own jsonb paths, so it can come back without
+  // network columns even when the samples carry them. Only then is the raw
+  // sample list worth fetching, to keep the bandwidth history from being blank.
+  const statsHaveNet = stats.some(
+    (row) => row.net_rx_bps_avg !== null || row.net_tx_bps_avg !== null
+  )
+  const statsHaveDiskIo = stats.some(
+    (row) =>
+      row.disk_read_bps_avg !== null ||
+      row.disk_write_bps_avg !== null ||
+      row.disk_read_iops_avg !== null ||
+      row.disk_write_iops_avg !== null
+  )
+  const { data: recent } = useQuery({
+    ...recentSamplesQueryOptions(mac),
+    enabled: !statsHaveNet || !statsHaveDiskIo,
+  })
 
   // Visiting a machine is what makes it "recent" in the sidebar.
   React.useEffect(() => {
@@ -79,31 +103,33 @@ function MachineDetailPage() {
   const sample = liveSample ?? fallbackSample
   const snapshot = sample ? normalizeSample(sample, machine) : null
 
-  // Raw samples give the throughput sparkline something to draw before the
-  // first SSE event arrives; the live tail then extends it.
-  const recentSnapshots = mergeSnapshots(
-    (recent ?? []).map((entry) => normalizeSample(entry, machine)),
-    history.map((entry) => normalizeSample(entry, machine))
-  )
-  const liveSnapshots = recentSnapshots.slice(-SPARKLINE_POINTS)
+  // The live card is exactly that: it starts empty on arrival and fills from
+  // the stream, so it never mixes in history the user did not watch arrive.
+  const liveSnapshots = history
+    .map((entry) => normalizeSample(entry, machine))
+    .slice(-SPARKLINE_POINTS)
 
   // Historic buckets plus the live SSE tail, aggregated into the same interval
   // so the charts keep moving between refetches.
   const chartPoints = mergeLiveIntoPoints(
     stats.map(statsRowToPoint),
-    recentSnapshots,
+    liveSnapshots,
     TIME_RANGES[range].intervalMs
   )
 
-  // The stats aggregate reads its own jsonb paths, so it can come back without
-  // network columns even when the samples carry them. Fall back to bucketing
-  // the raw samples rather than drawing an empty chart.
-  const statsHaveNet = stats.some(
-    (row) => row.net_rx_bps_avg !== null || row.net_tx_bps_avg !== null
+  // Same fallback for both: when the aggregate has no column for a metric, the
+  // raw samples still carry it, so the chart is drawn from those instead.
+  const samplePoints = mergeLiveIntoPoints(
+    [],
+    mergeSnapshots(
+      (recent ?? []).map((entry) => normalizeSample(entry, machine)),
+      liveSnapshots
+    ),
+    TIME_RANGES[range].intervalMs
   )
-  const bandwidthPoints = statsHaveNet
-    ? chartPoints
-    : mergeLiveIntoPoints([], recentSnapshots, TIME_RANGES[range].intervalMs)
+
+  const bandwidthPoints = statsHaveNet ? chartPoints : samplePoints
+  const diskIoPoints = statsHaveDiskIo ? chartPoints : samplePoints
 
   const openstack = machine.openstack
 
@@ -117,7 +143,7 @@ function MachineDetailPage() {
         </Badge>
         {!machine.enabled ? <Badge variant="secondary">disabled</Badge> : null}
         {!machine.openstack_found ? (
-          <Badge variant="destructive">not in OpenStack</Badge>
+          <Badge variant="outline">no OpenStack record</Badge>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           <LiveStatusIndicator status={status} />
@@ -125,7 +151,7 @@ function MachineDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <RadialMetricCard
           title="CPU"
           description="Live utilization"
@@ -150,7 +176,8 @@ function MachineDetailPage() {
           }
         />
         <DiskCard disks={snapshot?.disks ?? []} />
-        <BandwidthCard latest={snapshot} history={liveSnapshots} />
+        <DiskIoCard io={snapshot?.diskIo ?? null} disks={snapshot?.disks} />
+        <BandwidthCard latest={snapshot} />
       </div>
 
       {openstack ? (
@@ -180,7 +207,18 @@ function MachineDetailPage() {
             </dl>
           </CardContent>
         </Card>
-      ) : null}
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>OpenStack</CardTitle>
+            <CardDescription>
+              No record of {machine.ipv4} in the lookup — registered by address,
+              or moved since. Everything below comes from the agent, so any
+              limit it does not report is shown as unknown.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">History</h2>
@@ -239,6 +277,44 @@ function MachineDetailPage() {
             },
           ]}
         />
+        <MetricsLineChart
+          title="Disk throughput"
+          description="Bucket average · live"
+          data={diskIoPoints}
+          range={range}
+          valueFormatter={formatBytesRate}
+          series={[
+            {
+              dataKey: "disk_read_bps",
+              label: "Read",
+              colorVar: "var(--chart-1)",
+            },
+            {
+              dataKey: "disk_write_bps",
+              label: "Write",
+              colorVar: "var(--chart-4)",
+            },
+          ]}
+        />
+        <MetricsLineChart
+          title="Disk operations"
+          description="Bucket average · live"
+          data={diskIoPoints}
+          range={range}
+          valueFormatter={formatIops}
+          series={[
+            {
+              dataKey: "disk_read_iops",
+              label: "Read",
+              colorVar: "var(--chart-2)",
+            },
+            {
+              dataKey: "disk_write_iops",
+              label: "Write",
+              colorVar: "var(--chart-5)",
+            },
+          ]}
+        />
       </div>
     </div>
   )
@@ -275,14 +351,15 @@ function MachineDetailSkeleton() {
   return (
     <div className="flex flex-col gap-4">
       <Skeleton className="h-8 w-64" />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
           <Skeleton key={index} className="h-56 rounded-xl" />
         ))}
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Skeleton className="h-80 rounded-xl" />
-        <Skeleton className="h-80 rounded-xl" />
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-80 rounded-xl" />
+        ))}
       </div>
     </div>
   )

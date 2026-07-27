@@ -1,5 +1,7 @@
 import { AddMachineDialog } from "@/components/machines/add-machine-dialog"
+import { DeregisterMachinesDialog } from "@/components/machines/deregister-machines-dialog"
 import { MachineActions } from "@/components/machines/machine-actions"
+import { RelativeTime } from "@/components/relative-time"
 import {
   MachineStatusDot,
   machineHealth,
@@ -23,7 +25,6 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useClock } from "@/hooks/use-clock"
 import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
-import { formatRelativeTime } from "@/lib/format"
 import {
   collectorMachineHealth,
   collectorStatusQueryOptions,
@@ -55,7 +56,10 @@ function MachinesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Machines</h1>
-        <AddMachineDialog />
+        <div className="flex items-center gap-2">
+          {machines.length > 0 ? <DeregisterMachinesDialog /> : null}
+          <AddMachineDialog />
+        </div>
       </div>
       {machines.length === 0 ? (
         <Empty>
@@ -65,7 +69,8 @@ function MachinesPage() {
             </EmptyMedia>
             <EmptyTitle>No machines registered</EmptyTitle>
             <EmptyDescription>
-              Only addresses OpenStack knows about can be registered.
+              Register an address to start polling it — the OpenStack cache is
+              offered as a shortcut, not a requirement.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -104,9 +109,14 @@ function MachinesPage() {
                       <span className="truncate text-xs text-muted-foreground">
                         {machine.ipv4} ·{" "}
                         <span className="font-mono">{machine.mac}</span>
-                        {sample
-                          ? ` · sampled ${formatRelativeTime(sample.ts)}`
-                          : " · no samples"}
+                        {sample ? (
+                          <>
+                            {" · sampled "}
+                            <RelativeTime iso={sample.ts} />
+                          </>
+                        ) : (
+                          " · no samples"
+                        )}
                       </span>
                     </div>
                     {machine.openstack ? (

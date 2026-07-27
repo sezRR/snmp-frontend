@@ -36,12 +36,22 @@ function useChart() {
   return context
 }
 
+/**
+ * Collapsing the sidebar animates the chart's width for 200ms, and an
+ * undebounced container redraws every series on every resize observation of
+ * that animation — several charts of a few hundred points each, per frame.
+ * Debouncing trades one redraw shortly after the transition settles for all
+ * the dropped frames in between.
+ */
+const RESIZE_DEBOUNCE_MS = 120
+
 function ChartContainer({
   id,
   className,
   children,
   config,
   initialDimension = INITIAL_DIMENSION,
+  debounce = RESIZE_DEBOUNCE_MS,
   ...props
 }: React.ComponentProps<"div"> & {
   config: ChartConfig
@@ -52,6 +62,7 @@ function ChartContainer({
     width: number
     height: number
   }
+  debounce?: number
 }) {
   const uniqueId = React.useId()
   const chartId = `chart-${id ?? uniqueId.replace(/:/g, "")}`
@@ -70,6 +81,7 @@ function ChartContainer({
         <ChartStyle id={chartId} config={config} />
         <RechartsPrimitive.ResponsiveContainer
           initialDimension={initialDimension}
+          debounce={debounce}
         >
           {children}
         </RechartsPrimitive.ResponsiveContainer>

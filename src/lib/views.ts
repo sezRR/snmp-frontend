@@ -36,6 +36,47 @@ export function saveView(view: Omit<View, "id"> & { id?: string }): View {
   return saved
 }
 
+/** Adds machines to a view, ignoring the ones already in it. */
+export function addMachinesToView(id: string, macs: string[]): void {
+  viewsStore.set((previous) =>
+    previous.map((view) =>
+      view.id === id
+        ? { ...view, macs: [...new Set([...view.macs, ...macs])] }
+        : view
+    )
+  )
+}
+
+/**
+ * Drops machines from one view. The machines stay registered and keep being
+ * polled; only this view's membership changes.
+ */
+export function removeMachinesFromView(id: string, macs: string[]): void {
+  const dropped = new Set(macs)
+  viewsStore.set((previous) =>
+    previous.map((view) =>
+      view.id === id
+        ? { ...view, macs: view.macs.filter((mac) => !dropped.has(mac)) }
+        : view
+    )
+  )
+}
+
+/**
+ * Drops a machine from every view it appears in — what a deregistration means
+ * for the client's own grouping. Views are stored by MAC, so without this a
+ * deleted machine would linger as a saved reference that can never resolve.
+ */
+export function removeMachineFromViews(mac: string): void {
+  viewsStore.set((previous) =>
+    previous.map((view) =>
+      view.macs.includes(mac)
+        ? { ...view, macs: view.macs.filter((entry) => entry !== mac) }
+        : view
+    )
+  )
+}
+
 export function deleteView(id: string): void {
   viewsStore.set((previous) => previous.filter((view) => view.id !== id))
 }

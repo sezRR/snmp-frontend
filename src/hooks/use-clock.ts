@@ -1,11 +1,14 @@
 import * as React from "react"
 
-// A single ticking clock shared by every component that needs "how old is this
-// sample". Reading `Date.now()` during render is impure and re-renders would
-// silently disagree with each other; subscribing to one store keeps freshness
-// checks consistent and re-renders them on a schedule.
+// A single ticking clock shared by every component that needs "how long ago".
+// Reading `Date.now()` during render is impure and re-renders would silently
+// disagree with each other; subscribing to one store keeps elapsed times
+// consistent and counting.
 
-const TICK_MS = 15_000
+const TICK_MS = 1000
+
+/** Freshness checks only change on the minute scale. */
+export const COARSE_RESOLUTION_MS = 15_000
 
 let current = Date.now()
 let timer: ReturnType<typeof setInterval> | undefined
@@ -26,9 +29,16 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-const getSnapshot = () => current
-
-/** Milliseconds since the epoch, refreshed every 15 seconds. */
-export function useClock(): number {
+/**
+ * Milliseconds since the epoch, rounded down to `resolutionMs`. The ticker runs
+ * every second, but a subscriber reading at a coarser resolution gets an
+ * unchanged number in between and React skips its re-render — so a per-second
+ * counter and a 15-second staleness check can share one interval.
+ */
+export function useClock(resolutionMs: number = COARSE_RESOLUTION_MS): number {
+  const getSnapshot = React.useCallback(
+    () => Math.floor(current / resolutionMs) * resolutionMs,
+    [resolutionMs]
+  )
   return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

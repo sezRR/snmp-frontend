@@ -9,6 +9,11 @@ const HIDDEN_CLOSE_DELAY_MS = 30_000
 /** Enough tail to redraw a 15-minute window at a 5s poll interval. */
 const MAX_HISTORY = 180
 
+// The stream names its sample events; `onmessage` alone would miss them, since
+// it only fires for events with no name at all. The backend currently sends
+// `metric`, and the others are accepted so a rename does not go dark.
+const SAMPLE_EVENTS = ["metric", "metrics", "sample"]
+
 interface StreamSnapshot<S> {
   data: S
   status: LiveStatus
@@ -26,7 +31,8 @@ interface StreamStore<S> {
 function createSampleStream<S>(
   url: string,
   initial: S,
-  reduce: (state: S, sample: MetricSample) => S
+  reduce: (state: S, sample: MetricSample) => S,
+  onStop?: () => void
 ): StreamStore<S> {
   let snapshot: StreamSnapshot<S> = { data: initial, status: "connecting" }
   const listeners = new Set<() => void>()
@@ -42,9 +48,13 @@ function createSampleStream<S>(
   }
 
   const handleEvent = (event: MessageEvent) => {
-    const parsed = metricSampleSchema.safeParse(
-      JSON.parse(event.data as string)
-    )
+    let payload: unknown
+    try {
+      payload = JSON.parse(event.data as string)
+    } catch {
+      return
+    }
+    const parsed = metricSampleSchema.safeParse(payload)
     if (!parsed.success) return
     emit({ data: reduce(snapshot.data, parsed.data) })
   }
@@ -56,8 +66,10 @@ function createSampleStream<S>(
       attempt = 0
       emit({ status: "open" })
     }
-    // Named event from FastAPI, plus unnamed-event fallback
-    source.addEventListener("metrics", handleEvent)
+    // Named events from FastAPI, plus the unnamed-event fallback. The stream's
+    // own `connected` event is left alone: it fails the sample schema and is
+    // dropped by handleEvent.
+    for (const name of SAMPLE_EVENTS) source.addEventListener(name, handleEvent)
     source.onmessage = handleEvent
     source.onerror = () => {
       // EventSource retries transient drops itself; only when the browser
@@ -97,7 +109,10 @@ function createSampleStream<S>(
     document.removeEventListener("visibilitychange", handleVisibility)
     source?.close()
     source = null
+    // Leaving the page discards the tail: coming back starts a fresh window
+    // rather than resuming one the user never watched fill.
     snapshot = { data: initial, status: "connecting" }
+    onStop?.()
   }
 
   return {
@@ -145,7 +160,8 @@ function getMachineStore(mac: string): StreamStore<MachineState> {
       (state, sample) => ({
         latest: sample,
         history: [...state.history.slice(-(MAX_HISTORY - 1)), sample],
-      })
+      }),
+      () => machineStores.delete(mac)
     )
     machineStores.set(mac, store)
   }

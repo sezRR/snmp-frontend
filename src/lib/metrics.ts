@@ -22,8 +22,16 @@ export interface RamReading {
   totalFromFlavor: boolean
 }
 
-export interface DiskReading {
+export interface DiskIoReading {
+  readBps: number | null
+  writeBps: number | null
+  readIops: number | null
+  writeIops: number | null
+}
+
+export interface DiskReading extends DiskIoReading {
   mount: string
+  device: string | null
   usedBytes: number | null
   totalBytes: number | null
   usedPercent: number | null
@@ -57,6 +65,8 @@ export interface MetricsSnapshot {
   disks: DiskReading[]
   /** Root filesystem when reported, else the fullest mount. */
   primaryDisk: DiskReading | null
+  /** Whole-machine disk IO: reported as a total, else summed over the mounts. */
+  diskIo: DiskIoReading
   net: NetReading
 }
 
@@ -85,12 +95,20 @@ function pickPrimaryDisk(disks: DiskReading[]): DiskReading | null {
   )
 }
 
+/** Null unless at least one part was reported; a missing part counts as zero. */
+function sumReported(values: (number | null)[]): number | null {
+  const present = values.filter((value) => value !== null)
+  if (present.length === 0) return null
+  return present.reduce((total, value) => total + value, 0)
+}
+
 export function normalizeSample(
   sample: MetricSample,
   machine?: Machine | null
 ): MetricsSnapshot {
   const { cpu, ram, disk } = sample.metrics
   const net = sample.metrics.network ?? sample.metrics.net
+  const diskIoTotal = sample.metrics.disk_io ?? sample.metrics.diskio
   const flavor = machine?.openstack?.flavor ?? null
 
   const ramTotalReported = num(ram?.total_bytes)
@@ -105,13 +123,33 @@ export function normalizeSample(
       num(entry.total_bytes) ??
       (index === 0 && flavor ? flavor.disk_gb * GIB : null)
     const usedBytes = num(entry.used_bytes)
+    const io = entry.io
     return {
       mount: entry.mount ?? "/",
+      device: entry.device ?? null,
       totalBytes,
       usedBytes: usedBytes ?? bytesFrom(num(entry.used_percent), totalBytes),
       usedPercent: num(entry.used_percent) ?? percentOf(usedBytes, totalBytes),
+      readBps: num(entry.read_bps) ?? num(io?.read_bps),
+      writeBps: num(entry.write_bps) ?? num(io?.write_bps),
+      readIops: num(entry.read_iops) ?? num(io?.read_iops),
+      writeIops: num(entry.write_iops) ?? num(io?.write_iops),
     }
   })
+
+  // A reported total wins over the per-mount sum: mounts on one device would
+  // otherwise count the same physical IO twice.
+  const diskIo: DiskIoReading = {
+    readBps:
+      num(diskIoTotal?.read_bps) ?? sumReported(disks.map((d) => d.readBps)),
+    writeBps:
+      num(diskIoTotal?.write_bps) ?? sumReported(disks.map((d) => d.writeBps)),
+    readIops:
+      num(diskIoTotal?.read_iops) ?? sumReported(disks.map((d) => d.readIops)),
+    writeIops:
+      num(diskIoTotal?.write_iops) ??
+      sumReported(disks.map((d) => d.writeIops)),
+  }
 
   return {
     ts: sample.ts,
@@ -126,6 +164,7 @@ export function normalizeSample(
     },
     disks,
     primaryDisk: pickPrimaryDisk(disks),
+    diskIo,
     net: readNet(net),
   }
 }
@@ -181,6 +220,10 @@ export interface ChartPoint {
   cpu_percent: number | null
   ram_percent: number | null
   disk_percent: number | null
+  disk_read_bps: number | null
+  disk_write_bps: number | null
+  disk_read_iops: number | null
+  disk_write_iops: number | null
   net_rx_bps: number | null
   net_tx_bps: number | null
 }
@@ -191,6 +234,10 @@ export function statsRowToPoint(row: MetricStatsRow): ChartPoint {
     cpu_percent: num(row.cpu_usage_percent_avg),
     ram_percent: num(row.ram_used_percent_avg),
     disk_percent: num(row.disk_used_percent_avg),
+    disk_read_bps: num(row.disk_read_bps_avg),
+    disk_write_bps: num(row.disk_write_bps_avg),
+    disk_read_iops: num(row.disk_read_iops_avg),
+    disk_write_iops: num(row.disk_write_iops_avg),
     net_rx_bps: num(row.net_rx_bps_avg),
     net_tx_bps: num(row.net_tx_bps_avg),
   }
@@ -202,6 +249,10 @@ export function snapshotToPoint(snapshot: MetricsSnapshot): ChartPoint {
     cpu_percent: snapshot.cpuPercent,
     ram_percent: snapshot.ram.usedPercent,
     disk_percent: snapshot.primaryDisk?.usedPercent ?? null,
+    disk_read_bps: snapshot.diskIo.readBps,
+    disk_write_bps: snapshot.diskIo.writeBps,
+    disk_read_iops: snapshot.diskIo.readIops,
+    disk_write_iops: snapshot.diskIo.writeIops,
     net_rx_bps: snapshot.net.rxBps,
     net_tx_bps: snapshot.net.txBps,
   }

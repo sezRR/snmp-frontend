@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import type { Plugin } from "vite"
 
 // Dev-only stand-in for the FastAPI backend. Serves the same /api contract
-// (REST + SSE) as SNMP metrics API 0.5.0 so the UI is fully exercisable before
+// (REST + SSE) as SNMP metrics API 0.6.0 so the UI is fully exercisable before
 // the real backend is reachable. Requests bypass it entirely once
 // VITE_API_BASE_URL points at a real origin.
 
@@ -81,7 +81,42 @@ const openstackServers: ServerInfo[] = [
     ipv4: "192.168.1.31",
     flavor: FLAVORS.medium,
   },
+  ...stressServers(30),
 ]
+
+/**
+ * A block of servers OpenStack knows and nothing has registered yet.
+ *
+ * The four hand-written machines above are enough to see a dashboard work;
+ * they are not enough to see it under load. These exercise the paths that only
+ * hurt at scale: the multi-select and "register all" in the add dialog, the
+ * fleet stream fanning out to N connections' worth of samples, and the fleet
+ * filters and sorts once the list no longer fits on a screen.
+ */
+function stressServers(count: number): ServerInfo[] {
+  const tenants = ["platform", "edge", "analytics", "research"]
+  const users = ["sezer", "ops", "batch", "ci"]
+  const flavors = [FLAVORS.small, FLAVORS.medium, FLAVORS.large]
+
+  return Array.from({ length: count }, (_, index) => {
+    const n = index + 1
+    const octet = (n + 10).toString(16).padStart(2, "0")
+    return {
+      server_id: `6f1b0e34-1${String(n).padStart(3, "0")}-4f0a-9a1e-0b0f0000${octet}00`,
+      name: `stress-node-${String(n).padStart(2, "0")}`,
+      tenant_name: tenants[index % tenants.length],
+      user_name: users[index % users.length],
+      // A couple of shut-off servers, so the fleet is not uniformly healthy.
+      status: n % 11 === 0 ? "SHUTOFF" : "ACTIVE",
+      mac: `fa:16:3e:00:01:${octet}`,
+      ipv4: `10.20.0.${n + 10}`,
+      flavor: flavors[index % flavors.length],
+    }
+  })
+}
+
+/** The real collector polls every 5 seconds; the mock keeps to that cadence. */
+const POLL_INTERVAL_SECONDS = 5
 
 const now = () => new Date().toISOString()
 
@@ -116,9 +151,50 @@ const machines: MachineRow[] = [
 // timestamps a machine is allowed to return.
 const historyFloor = new Map<string, number>()
 
+// --- Fault injection (dev only) -------------------------------------------
+// Production will hit unreachable hosts, dead snmpd services and servers that
+// vanish from OpenStack. None of that can be provoked against a real fleet on
+// demand, so the mock can be told to fake each condition per machine.
+
+const FAULTS = [
+  "none",
+  "host_down",
+  "snmpd_inactive",
+  "collection_failed",
+  "openstack_deleted",
+] as const
+
+type Fault = (typeof FAULTS)[number]
+
+/** What the collector would report as the reason a poll produced nothing. */
+const FAULT_ERRORS: Record<Fault, string | null> = {
+  none: null,
+  host_down: "No SNMP response: request timed out after 3 retries",
+  snmpd_inactive: "Connection refused on udp/161 — snmpd is not running",
+  collection_failed:
+    "SNMP walk failed: no such instance (1.3.6.1.4.1.2021.4.5.0)",
+  // The host answers fine; it is OpenStack that has lost the MAC.
+  openstack_deleted: null,
+}
+
+const faults = new Map<string, Fault>()
+
+const faultOf = (mac: string): Fault => faults.get(mac) ?? "none"
+
+/** A machine whose poll fails contributes no samples at all. */
+const pollSucceeds = (mac: string): boolean =>
+  FAULT_ERRORS[faultOf(mac)] === null
+
+const knownToOpenStack = (mac: string): boolean =>
+  faultOf(mac) !== "openstack_deleted"
+
+/** The fleet as the lookup would see it, minus anything faked as deleted. */
+const visibleServers = (): ServerInfo[] =>
+  openstackServers.filter((server) => knownToOpenStack(server.mac))
+
 const collector = {
   running: true,
-  interval_seconds: 30,
+  interval_seconds: POLL_INTERVAL_SECONDS,
   ticks: 412,
   last_tick_at: now(),
   last_tick_duration_seconds: 0.42,
@@ -126,6 +202,36 @@ const collector = {
     string,
     { mac: string; success: number; failure: number; last_error: string | null }
   >,
+}
+
+/** One collection round, shared by the timer and the force-tick endpoint. */
+function runTick() {
+  collector.ticks += 1
+  collector.last_tick_at = now()
+  collector.last_tick_duration_seconds = round(0.2 + Math.random() * 0.5)
+
+  let succeeded = 0
+  let failed = 0
+  for (const machine of machines) {
+    const stat = (collector.machines[machine.mac] ??= {
+      mac: machine.mac,
+      success: 0,
+      failure: 0,
+      last_error: null,
+    })
+    if (!machine.enabled) continue
+    const error = FAULT_ERRORS[faultOf(machine.mac)]
+    if (error) {
+      stat.failure += 1
+      stat.last_error = error
+      failed += 1
+    } else {
+      stat.success += 1
+      stat.last_error = null
+      succeeded += 1
+    }
+  }
+  return { polled: succeeded + failed, succeeded, failed }
 }
 
 const cache = {
@@ -147,8 +253,21 @@ for (const machine of machines) {
   }
 }
 
+/**
+ * A MAC for an address OpenStack does not know. Locally-administered prefix
+ * (02:) plus the four octets, so the same address always registers as the same
+ * machine across restarts.
+ */
+function syntheticMac(ipv4: string): string {
+  const octets = ipv4
+    .split(".")
+    .map((part) => (Number(part) & 0xff).toString(16).padStart(2, "0"))
+  return ["02", "00", ...octets].join(":")
+}
+
 function serverFor(mac: string): ServerInfo | null {
   if (!cache.populated) return null
+  if (!knownToOpenStack(mac)) return null
   return openstackServers.find((server) => server.mac === mac) ?? null
 }
 
@@ -188,6 +307,15 @@ function metricsAt(mac: string, timeMs: number) {
     (5 + wave(13, 1) * 60) * 1e6 * (1 + Math.random() * 0.1)
   )
 
+  // Disk IO is counted in bytes, unlike the network counters. Root carries the
+  // bulk of the reads; /var takes the writes, as a log-heavy mount would.
+  const rootRead = Math.round((4 + wave(7, 3) * 90) * MIB)
+  const rootWrite = Math.round((1 + wave(9, 6) * 22) * MIB)
+  const varRead = Math.round((0.5 + wave(23, 2) * 6) * MIB)
+  const varWrite = Math.round((2 + wave(5, 5) * 30) * MIB)
+  // ~64 KiB per operation on the reads, ~16 KiB on the smaller writes.
+  const iopsFor = (bytes: number, size: number) => round(bytes / size)
+
   return {
     ts: new Date(timeMs).toISOString(),
     mac,
@@ -204,24 +332,41 @@ function metricsAt(mac: string, timeMs: number) {
       disk: [
         {
           mount: "/",
+          device: "vda1",
           used_bytes: Math.round((diskPercent / 100) * diskTotal),
           total_bytes: diskTotal,
           used_percent: round(diskPercent),
+          read_bps: rootRead,
+          write_bps: rootWrite,
+          read_iops: iopsFor(rootRead, 64 * 1024),
+          write_iops: iopsFor(rootWrite, 16 * 1024),
         },
         {
           mount: "/var",
+          device: "vdb1",
           used_bytes: Math.round((varPercent / 100) * varTotal),
           total_bytes: varTotal,
           used_percent: round(varPercent),
+          read_bps: varRead,
+          write_bps: varWrite,
+          read_iops: iopsFor(varRead, 64 * 1024),
+          write_iops: iopsFor(varWrite, 16 * 1024),
         },
       ],
+      disk_io: {
+        read_bps: rootRead + varRead,
+        write_bps: rootWrite + varWrite,
+        read_iops: iopsFor(rootRead + varRead, 64 * 1024),
+        write_iops: iopsFor(rootWrite + varWrite, 16 * 1024),
+        interval_seconds: POLL_INTERVAL_SECONDS,
+      },
       network: {
         rx_bps: rxBps,
         tx_bps: txBps,
         // Counters as if the interface had been running at this rate for a day.
         rx_bytes: Math.round((rxBps / 8) * 86_400),
         tx_bytes: Math.round((txBps / 8) * 86_400),
-        interval_seconds: 15,
+        interval_seconds: POLL_INTERVAL_SECONDS,
         interfaces: [
           {
             name: "eth0",
@@ -259,7 +404,9 @@ function intervalMs(bucket: string): number {
 }
 
 function pollableMacs(filter: string[] | null): string[] {
-  const macs = machines.map((machine) => machine.mac)
+  const macs = machines
+    .filter((machine) => pollSucceeds(machine.mac))
+    .map((machine) => machine.mac)
   return filter && filter.length > 0
     ? macs.filter((mac) => filter.includes(mac))
     : macs
@@ -290,13 +437,15 @@ function openStream(req: IncomingMessage, res: ServerResponse, macs: string[]) {
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   })
-  res.write(": connected\n\n")
+  res.write(`event: connected\ndata: ${JSON.stringify({ macs: "all" })}\n\n`)
   const metricsTimer = setInterval(() => {
     for (const mac of macs) {
       const payload = JSON.stringify(metricsAt(mac, Date.now()))
-      res.write(`event: metrics\ndata: ${payload}\n\n`)
+      // Same event name the real collector uses, so the mock exercises the
+      // same client path.
+      res.write(`event: metric\ndata: ${payload}\n\n`)
     }
-  }, 2000)
+  }, POLL_INTERVAL_SECONDS * 1000)
   const heartbeatTimer = setInterval(() => res.write(": ping\n\n"), 15_000)
   req.on("close", () => {
     clearInterval(metricsTimer)
@@ -309,6 +458,11 @@ export function mockSnmpApi(): Plugin {
     name: "mock-snmp-api",
     apply: "serve",
     configureServer(server) {
+      // A real collector advances on its own, and the UI's "last tick" counter
+      // is only honest if this one does too.
+      const loop = setInterval(runTick, collector.interval_seconds * 1000)
+      server.httpServer?.on("close", () => clearInterval(loop))
+
       server.middlewares.use("/api", (req, res, next) => {
         void handle(req, res).catch((error: unknown) =>
           json(res, 500, { detail: `Mock API error: ${String(error)}` })
@@ -337,20 +491,23 @@ export function mockSnmpApi(): Plugin {
             const body = await readBody(req)
             const ipv4 = typeof body.ipv4 === "string" ? body.ipv4 : ""
             const label = typeof body.label === "string" ? body.label : null
-            const known = openstackServers.find((entry) => entry.ipv4 === ipv4)
-            if (!known) {
+            if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ipv4)) {
               return json(res, 422, {
-                detail: `OpenStack does not know the address ${ipv4 || "(missing)"}`,
+                detail: `Not an IPv4 address: ${ipv4 || "(missing)"}`,
               })
             }
-            if (machines.some((machine) => machine.mac === known.mac)) {
+            const known = openstackServers.find((entry) => entry.ipv4 === ipv4)
+            // An address OpenStack has no record of is still registerable; the
+            // MAC is then whatever the poll itself reports.
+            const mac = known?.mac ?? syntheticMac(ipv4)
+            if (machines.some((machine) => machine.mac === mac)) {
               return json(res, 409, {
-                detail: `Machine ${known.mac} is already registered`,
+                detail: `Machine ${mac} is already registered`,
               })
             }
             const machine: MachineRow = {
-              mac: known.mac,
-              ipv4: known.ipv4,
+              mac,
+              ipv4,
               label,
               enabled: true,
               created_at: now(),
@@ -416,9 +573,13 @@ export function mockSnmpApi(): Plugin {
           const machineStreamMatch =
             /^\/machines\/([^/]+)\/metrics\/stream$/.exec(path)
           if (machineStreamMatch && method === "GET") {
-            return openStream(req, res, [
-              decodeURIComponent(machineStreamMatch[1]),
-            ])
+            // A failing machine still accepts the connection; it just never
+            // produces an event, which is what the real stream does.
+            return openStream(
+              req,
+              res,
+              [decodeURIComponent(machineStreamMatch[1])].filter(pollSucceeds)
+            )
           }
 
           // --- metrics --------------------------------------------------
@@ -432,7 +593,10 @@ export function mockSnmpApi(): Plugin {
               res,
               200,
               machines
-                .filter((machine) => visibleAt(machine.mac, timeMs))
+                .filter(
+                  (machine) =>
+                    visibleAt(machine.mac, timeMs) && pollSucceeds(machine.mac)
+                )
                 .map((machine) => metricsAt(machine.mac, timeMs))
             )
           }
@@ -453,7 +617,10 @@ export function mockSnmpApi(): Plugin {
                 rows.push({
                   bucket: new Date(ts).toISOString(),
                   mac,
-                  samples: Math.max(1, Math.round(step / 30_000)),
+                  samples: Math.max(
+                    1,
+                    Math.round(step / (POLL_INTERVAL_SECONDS * 1000))
+                  ),
                   cpu_usage_percent_avg: sample.metrics.cpu.usage_percent,
                   cpu_usage_percent_max: round(
                     clamp(sample.metrics.cpu.usage_percent * 1.15, 0, 100)
@@ -464,6 +631,22 @@ export function mockSnmpApi(): Plugin {
                   ),
                   disk_used_percent_avg: disk.used_percent,
                   disk_used_percent_max: disk.used_percent,
+                  disk_read_bps_avg: sample.metrics.disk_io.read_bps,
+                  disk_read_bps_max: Math.round(
+                    sample.metrics.disk_io.read_bps * 1.4
+                  ),
+                  disk_write_bps_avg: sample.metrics.disk_io.write_bps,
+                  disk_write_bps_max: Math.round(
+                    sample.metrics.disk_io.write_bps * 1.4
+                  ),
+                  disk_read_iops_avg: sample.metrics.disk_io.read_iops,
+                  disk_read_iops_max: round(
+                    sample.metrics.disk_io.read_iops * 1.4
+                  ),
+                  disk_write_iops_avg: sample.metrics.disk_io.write_iops,
+                  disk_write_iops_max: round(
+                    sample.metrics.disk_io.write_iops * 1.4
+                  ),
                   net_rx_bps_avg: sample.metrics.network.rx_bps,
                   net_rx_bps_max: Math.round(
                     sample.metrics.network.rx_bps * 1.3
@@ -485,10 +668,12 @@ export function mockSnmpApi(): Plugin {
               200,
               machines.map((machine) => ({
                 mac: machine.mac,
+                // History survives a fault; only new samples stop arriving.
                 samples: visibleAt(machine.mac, timeMs) ? 2880 : 0,
-                latest: visibleAt(machine.mac, timeMs)
-                  ? new Date(timeMs).toISOString()
-                  : null,
+                latest:
+                  visibleAt(machine.mac, timeMs) && pollSucceeds(machine.mac)
+                    ? new Date(timeMs).toISOString()
+                    : null,
               }))
             )
           }
@@ -502,7 +687,7 @@ export function mockSnmpApi(): Plugin {
             const sinceMs = since ? Date.parse(since) : null
             const macs = pollableMacs(macFilter)
             const samples = []
-            const step = 30_000
+            const step = POLL_INTERVAL_SECONDS * 1000
             let ts = Math.floor(Date.now() / step) * step
             while (samples.length < limit && ts > Date.now() - 86_400_000) {
               if (sinceMs !== null && ts < sinceMs) break
@@ -540,32 +725,9 @@ export function mockSnmpApi(): Plugin {
           }
 
           if (path === "/admin/collector/tick" && method === "POST") {
-            collector.ticks += 1
-            collector.last_tick_at = now()
-            collector.last_tick_duration_seconds = round(
-              0.2 + Math.random() * 0.5
-            )
-            for (const machine of machines) {
-              const stat = (collector.machines[machine.mac] ??= {
-                mac: machine.mac,
-                success: 0,
-                failure: 0,
-                last_error: null,
-              })
-              if (!machine.enabled) continue
-              if (serverFor(machine.mac) === null) {
-                stat.failure += 1
-                stat.last_error = "MAC not found in OpenStack"
-              } else {
-                stat.success += 1
-                stat.last_error = null
-              }
-            }
-            const polled = machines.filter((machine) => machine.enabled).length
+            const result = runTick()
             return json(res, 200, {
-              polled,
-              succeeded: polled,
-              failed: 0,
+              ...result,
               duration_seconds: collector.last_tick_duration_seconds,
             })
           }
@@ -579,7 +741,7 @@ export function mockSnmpApi(): Plugin {
               age_seconds: cache.populated
                 ? round((Date.now() - fetchedMs) / 1000)
                 : null,
-              servers: cache.populated ? openstackServers.length : 0,
+              servers: cache.populated ? visibleServers().length : 0,
               hits: cache.hits,
               misses: cache.misses,
               refreshes: cache.refreshes,
@@ -594,13 +756,46 @@ export function mockSnmpApi(): Plugin {
               cache.fetched_at = now()
               cache.refreshes += 1
             }
-            return json(res, 200, openstackServers)
+            return json(res, 200, visibleServers())
           }
 
           if (path === "/admin/openstack/cache/flush" && method === "POST") {
-            const dropped = cache.populated ? openstackServers.length : 0
+            const dropped = cache.populated ? visibleServers().length : 0
             cache.populated = false
             return json(res, 200, { flushed: true, dropped_servers: dropped })
+          }
+
+          // --- dev-only fault injection ---------------------------------
+          if (path === "/__dev/faults" && method === "GET") {
+            return json(res, 200, {
+              available: FAULTS,
+              faults: Object.fromEntries(
+                machines.map((machine) => [machine.mac, faultOf(machine.mac)])
+              ),
+            })
+          }
+
+          if (path === "/__dev/faults" && method === "POST") {
+            const body = await readBody(req)
+            const mac = typeof body.mac === "string" ? body.mac : ""
+            const fault = body.fault as Fault
+            if (!machines.some((machine) => machine.mac === mac)) {
+              return json(res, 404, { detail: `Machine ${mac} not found` })
+            }
+            if (!FAULTS.includes(fault)) {
+              return json(res, 422, {
+                detail: `Unknown fault: ${String(body.fault)}`,
+              })
+            }
+            if (fault === "none") faults.delete(mac)
+            else faults.set(mac, fault)
+            return json(res, 200, { mac, fault })
+          }
+
+          if (path === "/__dev/faults" && method === "DELETE") {
+            const cleared = faults.size
+            faults.clear()
+            return json(res, 200, { cleared })
           }
 
           next()

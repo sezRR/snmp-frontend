@@ -7,6 +7,10 @@ const METRIC_KEYS: MetricKey[] = [
   "cpu_percent",
   "ram_percent",
   "disk_percent",
+  "disk_read_bps",
+  "disk_write_bps",
+  "disk_read_iops",
+  "disk_write_iops",
   "net_rx_bps",
   "net_tx_bps",
 ]
@@ -29,11 +33,17 @@ export function mergeLiveIntoPoints(
   samples: MetricsSnapshot[],
   intervalMs: number
 ): ChartPoint[] {
-  if (samples.length === 0) return points
+  // The stats endpoint makes no ordering promise, and a chart plots points in
+  // array order — an unsorted response draws the axis as 1pm, 2pm, 1pm. Sort
+  // before anything else so the cutoff below is really the newest bucket.
+  const history = [...points].sort(
+    (a, b) => Date.parse(a.ts) - Date.parse(b.ts)
+  )
+  if (samples.length === 0) return history
 
   const lastHistoricMs =
-    points.length > 0
-      ? Date.parse(points[points.length - 1].ts)
+    history.length > 0
+      ? Date.parse(history[history.length - 1].ts)
       : Number.NEGATIVE_INFINITY
 
   const buckets = new Map<number, Accumulator>()
@@ -51,7 +61,7 @@ export function mergeLiveIntoPoints(
     buckets.set(bucketMs, acc)
   }
 
-  if (buckets.size === 0) return points
+  if (buckets.size === 0) return history
 
   const liveTail = [...buckets.entries()]
     .sort(([a], [b]) => a - b)
@@ -65,5 +75,5 @@ export function mergeLiveIntoPoints(
       return { ts: new Date(bucketMs).toISOString(), ...averaged }
     })
 
-  return [...points, ...liveTail]
+  return [...history, ...liveTail]
 }

@@ -21,12 +21,28 @@ const serverListSchema = z.array(serverInfoSchema)
 
 export const adminQueryKey = ["admin"] as const
 
+/**
+ * Bounds on the self-tuned poll. The collector runs at 5s, and fetching the
+ * status body once a round would be a request per round for counters that
+ * change slowly — "last tick" is read off the stream instead (useLastTickAt),
+ * so this only has to keep the tallies and the loop's own state honest.
+ */
+const MIN_STATUS_POLL_MS = 15_000
+const MAX_STATUS_POLL_MS = 60_000
+
 export const collectorStatusQueryOptions = () =>
   queryOptions({
     queryKey: [...adminQueryKey, "collector"] as const,
     queryFn: () =>
       api.get("/admin/collector", { schema: collectorStatusSchema }),
-    refetchInterval: 15_000,
+    refetchInterval: (query) => {
+      const seconds = query.state.data?.interval_seconds
+      if (typeof seconds !== "number" || seconds <= 0) return MAX_STATUS_POLL_MS
+      return Math.min(
+        MAX_STATUS_POLL_MS,
+        Math.max(MIN_STATUS_POLL_MS, seconds * 1000)
+      )
+    },
   })
 
 export const cacheStatsQueryOptions = () =>

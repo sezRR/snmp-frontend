@@ -1,3 +1,4 @@
+import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -27,9 +28,11 @@ import {
 } from "@/lib/queries/machines"
 import { usePurgeMachineMetricsMutation } from "@/lib/queries/metrics"
 import { forgetMachine } from "@/lib/recent-machines"
+import { removeMachineFromViews, removeMachinesFromView } from "@/lib/views"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import {
   Eraser,
+  Minus,
   MoreHorizontal,
   Pencil,
   Power,
@@ -51,12 +54,13 @@ export function MachineActions({ machine }: MachineActionsProps) {
   const [renaming, setRenaming] = React.useState(false)
   const [confirmingDelete, setConfirmingDelete] = React.useState(false)
   const [confirmingPurge, setConfirmingPurge] = React.useState(false)
+  const [cutoff, setCutoff] = React.useState<Date | undefined>(undefined)
   const [label, setLabel] = React.useState(machine.label ?? "")
 
   const navigate = useNavigate()
   // Only the machine's own detail page has to be left behind after a delete;
   // from a list the row just disappears and the user stays put.
-  const { mac: openMac } = useParams({ strict: false })
+  const { mac: openMac, viewId } = useParams({ strict: false })
   const update = useUpdateMachineMutation()
   const remove = useDeleteMachineMutation()
   const purge = usePurgeMachineMetricsMutation()
@@ -100,7 +104,7 @@ export function MachineActions({ machine }: MachineActionsProps) {
 
   const handlePurge = () => {
     purge.mutate(
-      { mac: machine.mac },
+      { mac: machine.mac, before: cutoff?.toISOString() },
       {
         onSuccess: (result) =>
           toast.success(
@@ -118,6 +122,9 @@ export function MachineActions({ machine }: MachineActionsProps) {
     remove.mutate(machine.mac, {
       onSuccess: () => {
         forgetMachine(machine.mac)
+        // The machine is gone from the backend; leaving it saved in a view
+        // would keep a reference nothing can ever resolve.
+        removeMachineFromViews(machine.mac)
         toast.success(`Deregistered ${machineName(machine)}`)
         setConfirmingDelete(false)
         if (openMac === machine.mac) void navigate({ to: "/machines" })
@@ -154,6 +161,18 @@ export function MachineActions({ machine }: MachineActionsProps) {
             <RefreshCw />
             Retry now
           </DropdownMenuItem>
+          {/* Only on a view page, where "remove" has somewhere to mean. */}
+          {viewId ? (
+            <DropdownMenuItem
+              onClick={() => {
+                removeMachinesFromView(viewId, [machine.mac])
+                toast.success(`Removed ${machineName(machine)} from the view`)
+              }}
+            >
+              <Minus />
+              Remove from view
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setConfirmingPurge(true)}>
             <Eraser />
@@ -197,16 +216,29 @@ export function MachineActions({ machine }: MachineActionsProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmingPurge} onOpenChange={setConfirmingPurge}>
-        <DialogContent className="sm:max-w-sm">
+      <Dialog
+        open={confirmingPurge}
+        onOpenChange={(next) => {
+          setConfirmingPurge(next)
+          if (!next) setCutoff(undefined)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Purge history?</DialogTitle>
             <DialogDescription>
-              Deletes every stored sample for {machineName(machine)}. The
-              machine stays registered and keeps being polled.
+              Deletes stored samples for {machineName(machine)}. The machine
+              stays registered and keeps being polled.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          {/* Per-machine purges delete rows, so the cutoff is exact here. */}
+          <PurgeCutoffField
+            id="machine-purge-cutoff"
+            value={cutoff}
+            onChange={setCutoff}
+            disabled={purge.isPending}
+          />
+          <DialogFooter className="mt-2">
             <Button
               variant="ghost"
               onClick={() => setConfirmingPurge(false)}

@@ -14,11 +14,26 @@ import {
 } from "@/components/ui/card"
 import { useClock } from "@/hooks/use-clock"
 import type { Machine, MetricSample } from "@/lib/api/types"
-import { formatBps, formatPercent, formatUsage } from "@/lib/format"
+import {
+  formatBps,
+  formatBytesRate,
+  formatPercent,
+  formatUsage,
+} from "@/lib/format"
 import { normalizeSample } from "@/lib/metrics"
 import { machineName } from "@/lib/queries/machines"
 import { Link } from "@tanstack/react-router"
-import { ArrowDown, ArrowUp, Building2, User } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowDownToLine,
+  ArrowUp,
+  ArrowUpFromLine,
+  Building2,
+  User,
+} from "lucide-react"
+
+const diskRate = (value: number | null): string =>
+  value === null ? "—" : formatBytesRate(value)
 
 interface MachineCardProps {
   machine: Machine
@@ -58,8 +73,10 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
             {!machine.enabled ? (
               <Badge variant="secondary">disabled</Badge>
             ) : null}
+            {/* Expected for a machine registered by address alone, so this
+                states the fact rather than flagging an error. */}
             {!machine.openstack_found ? (
-              <Badge variant="destructive">not in OpenStack</Badge>
+              <Badge variant="outline">no OpenStack record</Badge>
             ) : null}
           </span>
           {machine.openstack ? (
@@ -82,7 +99,7 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
         </CardAction>
       </CardHeader>
       <CardContent>
-        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
           <div className="flex flex-col gap-0.5">
             <dt className="text-xs text-muted-foreground">CPU</dt>
             <dd className="font-medium tabular-nums">
@@ -121,6 +138,19 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
                     snapshot.primaryDisk.totalBytes
                   )
                 : "—"}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <dt className="text-xs text-muted-foreground">Disk I/O</dt>
+            <dd className="flex flex-col font-medium tabular-nums">
+              <span className="flex items-center gap-1">
+                <ArrowDownToLine className="size-3 text-chart-1" />
+                {diskRate(snapshot?.diskIo.readBps ?? null)}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowUpFromLine className="size-3 text-chart-4" />
+                {diskRate(snapshot?.diskIo.writeBps ?? null)}
+              </span>
             </dd>
           </div>
           <div className="flex flex-col gap-0.5">

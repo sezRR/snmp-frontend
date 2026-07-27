@@ -1,3 +1,6 @@
+import { NextTickCountdown } from "@/components/collector-countdown"
+import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
+import { RelativeTime } from "@/components/relative-time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,8 +21,9 @@ import {
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
+import { useLastTickAt } from "@/hooks/use-live-sync"
 import { ApiError } from "@/lib/api/client"
-import { formatCount, formatDuration, formatRelativeTime } from "@/lib/format"
+import { formatCount, formatDuration } from "@/lib/format"
 import {
   cacheStatsQueryOptions,
   cachedServersQueryOptions,
@@ -55,11 +59,14 @@ function AdminPage() {
   const { data: servers } = useQuery(cachedServersQueryOptions())
   const { data: counts } = useQuery(metricCountsQueryOptions())
   const { data: machines } = useQuery(machinesQueryOptions())
+  const lastTickAt = useLastTickAt(collector)
 
   const tick = useForceTickMutation()
   const flush = useFlushCacheMutation()
   const purgeAll = usePurgeAllMetricsMutation()
   const [confirmingPurge, setConfirmingPurge] = React.useState(false)
+  const [cutoff, setCutoff] = React.useState<Date | undefined>(undefined)
+  const before = cutoff?.toISOString()
 
   const health = Object.values(collectorMachineHealth(collector))
   const labelFor = (mac: string) => {
@@ -99,7 +106,7 @@ function AdminPage() {
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
             <Fact
               label="State"
               value={collector?.running === false ? "stopped" : "running"}
@@ -114,10 +121,20 @@ function AdminPage() {
             />
             <Fact
               label="Last tick"
+              value={lastTickAt ? <RelativeTime iso={lastTickAt} /> : "—"}
+            />
+            <Fact
+              label="Next tick"
               value={
-                collector?.last_tick_at
-                  ? formatRelativeTime(collector.last_tick_at)
-                  : "—"
+                lastTickAt &&
+                typeof collector?.interval_seconds === "number" ? (
+                  <NextTickCountdown
+                    lastTickAt={lastTickAt}
+                    intervalSeconds={collector.interval_seconds}
+                  />
+                ) : (
+                  "—"
+                )
               }
             />
             <Fact
@@ -243,7 +260,7 @@ function AdminPage() {
               onClick={() => setConfirmingPurge(true)}
             >
               <Trash2 data-icon="inline-start" />
-              Purge everything
+              Purge samples
             </Button>
           </CardAction>
         </CardHeader>
@@ -257,7 +274,7 @@ function AdminPage() {
                 <div className="flex items-center gap-3 px-1 py-2 text-sm">
                   <span className="flex-1 truncate">{labelFor(count.mac)}</span>
                   <span className="text-xs text-muted-foreground">
-                    {latest ? formatRelativeTime(latest) : "no samples"}
+                    {latest ? <RelativeTime iso={latest} /> : "no samples"}
                   </span>
                   <span className="font-medium tabular-nums">
                     {samples === null ? "—" : formatCount(samples)}
@@ -269,16 +286,37 @@ function AdminPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={confirmingPurge} onOpenChange={setConfirmingPurge}>
-        <DialogContent className="sm:max-w-sm">
+      <Dialog
+        open={confirmingPurge}
+        onOpenChange={(next) => {
+          setConfirmingPurge(next)
+          if (!next) setCutoff(undefined)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Purge every machine&apos;s history?</DialogTitle>
+            <DialogTitle>
+              {before
+                ? "Purge samples older than this?"
+                : "Purge every machine's history?"}
+            </DialogTitle>
             <DialogDescription>
-              This truncates the metrics hypertable. Registrations survive;
-              every stored sample does not. This cannot be undone.
+              {before
+                ? "Registrations and newer samples survive. This cannot be undone."
+                : "This truncates the metrics hypertable. Registrations survive; every stored sample does not. This cannot be undone."}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <PurgeCutoffField
+            id="purge-all-cutoff"
+            value={cutoff}
+            onChange={setCutoff}
+            disabled={purgeAll.isPending}
+            // The fleet-wide purge drops whole chunks rather than rows, so the
+            // cutoff is honoured chunk-granularly and a chunk straddling it
+            // survives intact.
+            description="Whole chunks older than this are dropped, so some slightly newer samples can survive."
+          />
+          <DialogFooter className="mt-2">
             <Button
               variant="ghost"
               disabled={purgeAll.isPending}
@@ -291,10 +329,14 @@ function AdminPage() {
               disabled={purgeAll.isPending}
               onClick={() =>
                 purgeAll.mutate(
-                  {},
+                  { before },
                   {
                     onSuccess: (result) =>
-                      toast.success(`History purged (${result.method})`),
+                      toast.success(
+                        result.rows_deleted == null
+                          ? `History purged (${result.method})`
+                          : `Purged ${formatCount(result.rows_deleted)} samples`
+                      ),
                     onError: (error) =>
                       toast.error(errorMessage(error, "Purge failed")),
                     onSettled: () => setConfirmingPurge(false),
@@ -303,7 +345,7 @@ function AdminPage() {
               }
             >
               {purgeAll.isPending ? <Spinner data-icon="inline-start" /> : null}
-              Purge everything
+              {before ? "Purge older samples" : "Purge everything"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -312,7 +354,7 @@ function AdminPage() {
   )
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
       <dt className="text-xs text-muted-foreground">{label}</dt>

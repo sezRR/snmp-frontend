@@ -23,13 +23,20 @@ export const metricsQueryKey = ["metrics"] as const
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
-/** The most recent sample per machine — what the dashboard opens with. */
+/**
+ * The most recent sample per machine — what the dashboard opens with, and the
+ * fallback for machines the stream has not reported.
+ *
+ * useLiveMetricsSync writes each streamed sample into this cache, so the
+ * interval below is not how the read-outs stay current; it is the safety net
+ * for a stream that is down, and long enough not to duplicate its work.
+ */
 export const latestMetricsQueryOptions = () =>
   queryOptions({
     queryKey: [...metricsQueryKey, "latest"] as const,
     queryFn: () => api.get("/metrics/latest", { schema: sampleListSchema }),
     staleTime: 10_000,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   })
 
 export const metricStatsQueryOptions = (

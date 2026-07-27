@@ -1,4 +1,5 @@
 import { AddMachineDialog } from "@/components/machines/add-machine-dialog"
+import { DeregisterMachinesDialog } from "@/components/machines/deregister-machines-dialog"
 import { FleetSummary } from "@/components/machines/fleet-summary"
 import { MachineGrid } from "@/components/machines/machine-grid"
 import { MachineToolbar } from "@/components/machines/machine-toolbar"
@@ -81,7 +82,10 @@ function DashboardPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Dashboard</h1>
-        <AddMachineDialog />
+        <div className="flex items-center gap-2">
+          <DeregisterMachinesDialog machines={machines} />
+          <AddMachineDialog />
+        </div>
       </div>
       <FleetSummary machines={machines} servers={servers} />
       <MachineToolbar

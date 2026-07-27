@@ -1,8 +1,10 @@
 import { z } from "zod"
 
-// Mirrors the FastAPI OpenAPI document (SNMP metrics API 0.5.0). OpenStack is
-// the source of truth for machine facts, so a machine's identity here is its
-// MAC and its hardware limits come from the OpenStack flavor.
+// Mirrors the FastAPI OpenAPI document (SNMP metrics API 0.6.0). OpenStack is
+// the source of truth for machine facts when it knows the address, so a
+// machine's hardware limits come from the OpenStack flavor — but a machine
+// absent from the cache is still a machine, and everything here treats those
+// facts as optional.
 
 export const flavorInfoSchema = z.object({
   name: z.string(),
@@ -66,11 +68,34 @@ export const ramMetricsSchema = z.looseObject({
   used_percent: optionalNumber,
 })
 
+/** Throughput and operation rates, reported per mount and/or as a total. */
+export const diskIoMetricsSchema = z.looseObject({
+  read_bps: optionalNumber,
+  write_bps: optionalNumber,
+  read_iops: optionalNumber,
+  write_iops: optionalNumber,
+  /** Absolute counters, when the agent exposes them alongside the rates. */
+  read_bytes: optionalNumber,
+  write_bytes: optionalNumber,
+  read_ops: optionalNumber,
+  write_ops: optionalNumber,
+  /** Window the rates were derived over. */
+  interval_seconds: optionalNumber,
+})
+
 export const diskMetricsSchema = z.looseObject({
   mount: z.string().nullish(),
+  device: z.string().nullish(),
   used_bytes: optionalNumber,
   total_bytes: optionalNumber,
   used_percent: optionalNumber,
+  // The IO rates are read both from the mount entry itself and from a nested
+  // `io` object, since either placement is a payload the collector may emit.
+  read_bps: optionalNumber,
+  write_bps: optionalNumber,
+  read_iops: optionalNumber,
+  write_iops: optionalNumber,
+  io: diskIoMetricsSchema.nullish(),
 })
 
 export const netInterfaceMetricsSchema = z.looseObject({
@@ -99,6 +124,10 @@ export const metricsPayloadSchema = z.looseObject({
   cpu: cpuMetricsSchema.nullish(),
   ram: ramMetricsSchema.nullish(),
   disk: z.array(diskMetricsSchema).nullish(),
+  // Fleet-wide disk IO, when the collector totals it instead of (or as well
+  // as) reporting per mount. `diskio` is accepted as an alias.
+  disk_io: diskIoMetricsSchema.nullish(),
+  diskio: diskIoMetricsSchema.nullish(),
   // The collector emits `network`; `net` is accepted as an alias so a payload
   // from either naming still renders.
   network: netMetricsSchema.nullish(),
@@ -123,6 +152,14 @@ export const metricStatsRowSchema = z.object({
   ram_used_percent_max: optionalNumber,
   disk_used_percent_avg: optionalNumber,
   disk_used_percent_max: optionalNumber,
+  disk_read_bps_avg: optionalNumber,
+  disk_read_bps_max: optionalNumber,
+  disk_write_bps_avg: optionalNumber,
+  disk_write_bps_max: optionalNumber,
+  disk_read_iops_avg: optionalNumber,
+  disk_read_iops_max: optionalNumber,
+  disk_write_iops_avg: optionalNumber,
+  disk_write_iops_max: optionalNumber,
   net_rx_bps_avg: optionalNumber,
   net_rx_bps_max: optionalNumber,
   net_tx_bps_avg: optionalNumber,

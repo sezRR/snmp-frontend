@@ -1,4 +1,8 @@
 import {
+  metricTooltipFormatter,
+  metricTooltipLabelFormatter,
+} from "@/components/metrics/metric-tooltip"
+import {
   Card,
   CardContent,
   CardDescription,
@@ -17,7 +21,7 @@ import type { ChartPoint } from "@/lib/metrics"
 import type { TimeRangeKey } from "@/lib/time-range"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
-interface SeriesDef {
+export interface SeriesDef {
   dataKey: keyof Omit<ChartPoint, "ts">
   label: string
   colorVar: string
@@ -34,14 +38,19 @@ interface MetricsLineChartProps {
 }
 
 function tickFormatterFor(range: TimeRangeKey) {
+  // 24-hour, like every other timestamp in the app: axis ticks are read at a
+  // glance and an AM/PM suffix is both wider and easier to misread.
   const timeOnly: Intl.DateTimeFormatOptions = {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   }
   const dayAndTime: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
     hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   }
   const options = range === "7d" || range === "24h" ? dayAndTime : timeOnly
   return (value: string) => new Date(value).toLocaleString(undefined, options)
@@ -59,6 +68,10 @@ export function MetricsLineChart({
   const chartConfig = Object.fromEntries(
     series.map((s) => [s.dataKey, { label: s.label, color: s.colorVar }])
   ) satisfies ChartConfig
+
+  const seriesLabels = Object.fromEntries(
+    series.map((s) => [s.dataKey, s.label])
+  )
 
   const xTickFormatter = tickFormatterFor(range)
 
@@ -92,25 +105,10 @@ export function MetricsLineChart({
               cursor={false}
               content={
                 <ChartTooltipContent
-                  labelFormatter={(value) =>
-                    new Date(String(value)).toLocaleString()
-                  }
-                  formatter={(value, name, item) => (
-                    <div className="flex w-full items-center gap-2">
-                      <span
-                        className="size-2 shrink-0 rounded-xs"
-                        style={{ background: item.color }}
-                      />
-                      <span className="text-muted-foreground">
-                        {chartConfig[name as keyof typeof chartConfig]?.label ??
-                          name}
-                      </span>
-                      <span className="ml-auto font-mono font-medium tabular-nums">
-                        {typeof value === "number"
-                          ? valueFormatter(value)
-                          : "—"}
-                      </span>
-                    </div>
+                  labelFormatter={metricTooltipLabelFormatter}
+                  formatter={metricTooltipFormatter(
+                    seriesLabels,
+                    valueFormatter
                   )}
                 />
               }

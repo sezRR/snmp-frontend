@@ -1,8 +1,11 @@
+import { NextTickCountdown } from "@/components/collector-countdown"
+import { RelativeTime } from "@/components/relative-time"
 import { Button } from "@/components/ui/button"
 import { SidebarFooter } from "@/components/ui/sidebar"
 import { Spinner } from "@/components/ui/spinner"
+import { useLastTickAt } from "@/hooks/use-live-sync"
 import { ApiError } from "@/lib/api/client"
-import { formatDuration, formatRelativeTime } from "@/lib/format"
+import { formatDuration } from "@/lib/format"
 import {
   cacheStatsQueryOptions,
   collectorMachineHealth,
@@ -31,6 +34,10 @@ export function CollectorHealthFooter() {
   const { data: cache } = useQuery(cacheStatsQueryOptions())
   const tick = useForceTickMutation()
   const flush = useFlushCacheMutation()
+
+  // Anchored on the stream, so this counter resets with the per-machine ones
+  // instead of when the status endpoint next happens to be fetched.
+  const lastTickAt = useLastTickAt(collector)
 
   const health = Object.values(collectorMachineHealth(collector))
   const failing = health.filter((machine) => (machine.failure ?? 0) > 0).length
@@ -80,11 +87,11 @@ export function CollectorHealthFooter() {
         </div>
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-muted-foreground">
-          {collector?.last_tick_at ? (
+          {lastTickAt ? (
             <>
               <dt>Last tick</dt>
               <dd className="text-right tabular-nums">
-                {formatRelativeTime(collector.last_tick_at)}
+                <RelativeTime iso={lastTickAt} />
               </dd>
             </>
           ) : null}
@@ -93,6 +100,17 @@ export function CollectorHealthFooter() {
               <dt>Interval</dt>
               <dd className="text-right tabular-nums">
                 {formatDuration(collector.interval_seconds)}
+              </dd>
+            </>
+          ) : null}
+          {lastTickAt && typeof collector?.interval_seconds === "number" ? (
+            <>
+              <dt>Next tick</dt>
+              <dd className="text-right tabular-nums">
+                <NextTickCountdown
+                  lastTickAt={lastTickAt}
+                  intervalSeconds={collector.interval_seconds}
+                />
               </dd>
             </>
           ) : null}

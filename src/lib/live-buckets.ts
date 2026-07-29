@@ -15,6 +15,48 @@ const METRIC_KEYS: MetricKey[] = [
   "net_tx_bps",
 ]
 
+const emptyMetrics = (): Omit<ChartPoint, "ts"> =>
+  Object.fromEntries(METRIC_KEYS.map((key) => [key, null])) as Omit<
+    ChartPoint,
+    "ts"
+  >
+
+// An outage produces no stats rows at all, so without this the chart draws a
+// straight line from before the gap to after it, and the X axis — which plots
+// points evenly, not by time — hides how long the machine was silent. Filling
+// the missing buckets with nulls restores both the break and the spacing.
+const MAX_FILLED_BUCKETS = 2000
+
+export function withBucketGaps(
+  points: ChartPoint[],
+  intervalMs: number
+): ChartPoint[] {
+  if (points.length < 2 || intervalMs <= 0) return points
+
+  const filled: ChartPoint[] = [points[0]]
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i]
+    const prevMs = Date.parse(filled[filled.length - 1].ts)
+    const currentMs = Date.parse(point.ts)
+    // Half an interval of slack: buckets are floored to the interval, but a
+    // live tail bucket can land a few ms off and must not read as a gap.
+    if (Number.isFinite(prevMs) && currentMs - prevMs > intervalMs * 1.5) {
+      const missing = Math.min(
+        Math.round((currentMs - prevMs) / intervalMs) - 1,
+        MAX_FILLED_BUCKETS
+      )
+      for (let step = 1; step <= missing; step += 1) {
+        filled.push({
+          ts: new Date(prevMs + step * intervalMs).toISOString(),
+          ...emptyMetrics(),
+        })
+      }
+    }
+    filled.push(point)
+  }
+  return filled
+}
+
 type Accumulator = Record<MetricKey, { sum: number; count: number }>
 
 const emptyAccumulator = (): Accumulator =>

@@ -17,8 +17,10 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import { withBucketGaps } from "@/lib/live-buckets"
 import type { ChartPoint } from "@/lib/metrics"
-import type { TimeRangeKey } from "@/lib/time-range"
+import { TIME_RANGES, type TimeRangeKey } from "@/lib/time-range"
+import { useMemo } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 export interface SeriesDef {
@@ -56,6 +58,36 @@ function tickFormatterFor(range: TimeRangeKey) {
   return (value: string) => new Date(value).toLocaleString(undefined, options)
 }
 
+interface DotRenderProps {
+  cx?: number
+  cy?: number
+  index?: number
+}
+
+// With the line broken at gaps, a bucket that stands alone between two silent
+// ones draws no segment at all — it needs its own dot to be visible.
+function isolatedPointDot(
+  data: ChartPoint[],
+  dataKey: SeriesDef["dataKey"],
+  color: string
+) {
+  const reported = (index: number) =>
+    index >= 0 && index < data.length && data[index][dataKey] !== null
+
+  return ({ cx, cy, index }: DotRenderProps) => {
+    const at = index ?? -1
+    if (
+      cx === undefined ||
+      cy === undefined ||
+      reported(at - 1) ||
+      reported(at + 1)
+    ) {
+      return <g />
+    }
+    return <circle cx={cx} cy={cy} r={2.5} fill={color} />
+  }
+}
+
 export function MetricsLineChart({
   title,
   description,
@@ -75,6 +107,13 @@ export function MetricsLineChart({
 
   const xTickFormatter = tickFormatterFor(range)
 
+  // Missing buckets are what an outage looks like in the data, so they are
+  // materialised here rather than at every call site.
+  const points = useMemo(
+    () => withBucketGaps(data, TIME_RANGES[range].intervalMs),
+    [data, range]
+  )
+
   return (
     <Card>
       <CardHeader>
@@ -83,7 +122,7 @@ export function MetricsLineChart({
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[280px] w-full">
-          <AreaChart data={data} margin={{ left: 4, right: 12 }}>
+          <AreaChart data={points} margin={{ left: 4, right: 12 }}>
             <CartesianGrid vertical={false} />
             <XAxis
               dataKey="ts"
@@ -122,8 +161,13 @@ export function MetricsLineChart({
                 fill={`var(--color-${s.dataKey})`}
                 fillOpacity={0.1}
                 strokeWidth={2}
-                dot={false}
-                connectNulls
+                dot={isolatedPointDot(
+                  points,
+                  s.dataKey,
+                  `var(--color-${s.dataKey})`
+                )}
+                activeDot={{ r: 3 }}
+                connectNulls={false}
                 isAnimationActive={false}
               />
             ))}

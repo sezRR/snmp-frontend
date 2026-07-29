@@ -69,6 +69,14 @@ const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 })
 
+/**
+ * How far ahead of the browser a timestamp may sit and still be treated as
+ * clock drift. Beyond this the two clocks genuinely disagree — a VM guest that
+ * never synced, or one whose RTC is set to local time and read as UTC — and
+ * clamping would silently pin every value to "now" forever.
+ */
+export const SKEW_TOLERANCE_MS = 5_000
+
 /** `now` is passed in so callers can drive it from the shared clock. */
 export function formatRelativeTime(
   iso: string,
@@ -79,8 +87,11 @@ export function formatRelativeTime(
   // Every timestamp shown here is something that already happened. The
   // collector stamps samples from its own clock, so one a second or two ahead
   // of the browser's is drift, not the future — clamping keeps it at "now"
-  // instead of counting down "in 1 second".
-  const deltaSeconds = Math.min(0, (parsed - now) / 1000)
+  // instead of counting down "in 1 second". A larger gap is not drift, so fall
+  // back to the absolute time rather than reporting a frozen "now".
+  const drift = parsed - now
+  if (drift > SKEW_TOLERANCE_MS) return formatDateTime(parsed)
+  const deltaSeconds = Math.min(0, drift / 1000)
   const units: [Intl.RelativeTimeFormatUnit, number][] = [
     ["day", 86_400],
     ["hour", 3_600],

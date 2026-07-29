@@ -1,4 +1,5 @@
 import { useClock } from "@/hooks/use-clock"
+import { SKEW_TOLERANCE_MS } from "@/lib/format"
 
 /**
  * Time until the collector's next round, from the last tick plus its interval.
@@ -26,6 +27,18 @@ export function NextTickCountdown({
 
   if (!Number.isFinite(since) || period <= 0) {
     return <span className={className}>—</span>
+  }
+
+  // An anchor further ahead than drift explains means the collector's clock and
+  // the browser's disagree. `since` then stays negative round after round, the
+  // countdown below re-reads a full period every tick, and a stopped collector
+  // is indistinguishable from a healthy one. Say so instead.
+  if (since < -SKEW_TOLERANCE_MS) {
+    return (
+      <span className={className} title="Collector clock is ahead of this browser">
+        clock skew
+      </span>
+    )
   }
 
   // The anchor is a round that has already finished, and it is only re-read

@@ -16,7 +16,7 @@ import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
 import { shortMac } from "@/lib/format"
 import {
   collectorMachineHealth,
-  collectorStatusQueryOptions,
+  useCollectorStatusQuery,
 } from "@/lib/queries/admin"
 import { machineName, machinesQueryOptions } from "@/lib/queries/machines"
 import { latestMetricsQueryOptions, samplesByMac } from "@/lib/queries/metrics"
@@ -30,7 +30,7 @@ export function RecentMachinesNav() {
   const { mac: openMac } = useParams({ strict: false })
   const { data: machines } = useQuery(machinesQueryOptions())
   const { data: latest } = useQuery(latestMetricsQueryOptions())
-  const { data: collector } = useQuery(collectorStatusQueryOptions())
+  const { data: collector } = useCollectorStatusQuery()
   const { byMac } = useFleetLiveMetrics()
   const now = useClock()
   const closeOnNavigate = useCloseOnNavigate()

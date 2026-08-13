@@ -12,17 +12,24 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { Link, useLocation } from "@tanstack/react-router"
 import { Activity, Server, Wrench } from "lucide-react"
 
 const navItems = [
-  { title: "Machines", to: "/machines", icon: Server },
-  { title: "Admin", to: "/admin", icon: Wrench },
+  { title: "Machines", to: "/machines", icon: Server, scope: null },
+  { title: "Admin", to: "/admin", icon: Wrench, scope: SCOPES.adminRead },
 ] as const
 
 export function AppSidebar() {
   const { pathname } = useLocation()
   const closeOnNavigate = useCloseOnNavigate()
+  // The admin page is nothing but collector and cache internals, so without
+  // the scope to read them there is no page to navigate to.
+  const canReadAdmin = useHasScope(SCOPES.adminRead)
+  const visibleItems = navItems.filter(
+    (item) => item.scope === null || canReadAdmin
+  )
 
   return (
     <Sidebar collapsible="icon">
@@ -50,7 +57,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {visibleItems.map((item) => {
                 const isActive = pathname.startsWith(item.to)
                 return (
                   <SidebarMenuItem key={item.to}>

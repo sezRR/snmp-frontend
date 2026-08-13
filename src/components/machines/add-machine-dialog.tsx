@@ -20,7 +20,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { MachineCreate } from "@/lib/api/types"
 import { machineCreateSchema } from "@/lib/api/types"
-import { cachedServersQueryOptions } from "@/lib/queries/admin"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { useCachedServersQuery } from "@/lib/queries/admin"
 import {
   machineName,
   machinesQueryOptions,
@@ -57,11 +58,12 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const [label, setLabel] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
 
+  const canRegister = useHasScope(SCOPES.machinesWrite)
   const register = useRegisterAllMachinesMutation()
-  const { data: servers } = useQuery({
-    ...cachedServersQueryOptions(),
-    enabled: open,
-  })
+  // The picker is a convenience the OpenStack cache provides, and reading it
+  // is an admin scope — without it, registration still works by typing an
+  // address, which is the path every external machine takes anyway.
+  const { data: servers } = useCachedServersQuery({ enabled: open })
   const { data: machines } = useQuery(machinesQueryOptions())
 
   const registered = new Set(machines?.map((machine) => machine.mac))
@@ -187,6 +189,12 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
 
   const total = picked.length + attached.length + (typedAddress ? 1 : 0)
 
+  // Registration needs `machines:write`. Inside a view the dialog still earns
+  // its place without it — adding an already-registered machine to a view is
+  // local state that never reaches the backend — so only the register half
+  // goes away there, and everywhere else the button does.
+  if (!canRegister && !view) return null
+
   return (
     <Dialog
       open={open}
@@ -209,14 +217,14 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
             {view ? `Add machines to ${view.name}` : "Register machines"}
           </DialogTitle>
           <DialogDescription>
-            Pick as many cached OpenStack servers as you like, or type an
-            address. An address OpenStack does not know is registered as an
-            external machine, identified by the MAC you give it.
+            {canRegister
+              ? "Pick as many cached OpenStack servers as you like, or type an address. An address OpenStack does not know is registered as an external machine, identified by the MAC you give it."
+              : "Machines already registered can join this view. Registering a new one needs the machines:write scope."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
-            {available.length > 0 ? (
+            {canRegister && available.length > 0 ? (
               <Field>
                 <FieldLabel>
                   OpenStack servers
@@ -281,56 +289,62 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
               </Field>
             ) : null}
 
-            <Field>
-              <FieldLabel htmlFor="machine-ipv4">IPv4 address</FieldLabel>
-              <Input
-                id="machine-ipv4"
-                placeholder="192.168.1.10"
-                value={ipv4}
-                aria-invalid={error && typedAddress ? true : undefined}
-                onChange={(event) => setIpv4(event.target.value)}
-              />
-              <FieldDescription>
-                Any reachable address. One OpenStack has no record of is polled
-                all the same, as an external machine — with no flavor limits and
-                an address only you can change.
-              </FieldDescription>
-            </Field>
+            {canRegister ? (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="machine-ipv4">IPv4 address</FieldLabel>
+                  <Input
+                    id="machine-ipv4"
+                    placeholder="192.168.1.10"
+                    value={ipv4}
+                    aria-invalid={error && typedAddress ? true : undefined}
+                    onChange={(event) => setIpv4(event.target.value)}
+                  />
+                  <FieldDescription>
+                    Any reachable address. One OpenStack has no record of is
+                    polled all the same, as an external machine — with no flavor
+                    limits and an address only you can change.
+                  </FieldDescription>
+                </Field>
 
-            <Field>
-              <FieldLabel htmlFor="machine-mac">
-                MAC address {macRequired ? null : "(optional)"}
-              </FieldLabel>
-              <Input
-                id="machine-mac"
-                placeholder="fa:16:3e:00:00:01"
-                className="font-mono"
-                value={mac}
-                aria-invalid={
-                  error && macRequired && !mac.trim() ? true : undefined
-                }
-                onChange={(event) => setMac(event.target.value)}
-              />
-              <FieldDescription>
-                {macRequired
-                  ? `OpenStack has no record of ${typedAddress}, so its MAC — the machine's identity here — has to come from you.`
-                  : "Only needed for addresses outside the OpenStack fleet; the lookup resolves the rest."}
-              </FieldDescription>
-            </Field>
+                <Field>
+                  <FieldLabel htmlFor="machine-mac">
+                    MAC address {macRequired ? null : "(optional)"}
+                  </FieldLabel>
+                  <Input
+                    id="machine-mac"
+                    placeholder="fa:16:3e:00:00:01"
+                    className="font-mono"
+                    value={mac}
+                    aria-invalid={
+                      error && macRequired && !mac.trim() ? true : undefined
+                    }
+                    onChange={(event) => setMac(event.target.value)}
+                  />
+                  <FieldDescription>
+                    {macRequired
+                      ? `OpenStack has no record of ${typedAddress}, so its MAC — the machine's identity here — has to come from you.`
+                      : "Only needed for addresses outside the OpenStack fleet; the lookup resolves the rest."}
+                  </FieldDescription>
+                </Field>
 
-            <Field>
-              <FieldLabel htmlFor="machine-label">Label (optional)</FieldLabel>
-              <Input
-                id="machine-label"
-                placeholder="core-worker-01"
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-              />
-              <FieldDescription>
-                Applies to the typed address; picked servers keep their
-                OpenStack name.
-              </FieldDescription>
-            </Field>
+                <Field>
+                  <FieldLabel htmlFor="machine-label">
+                    Label (optional)
+                  </FieldLabel>
+                  <Input
+                    id="machine-label"
+                    placeholder="core-worker-01"
+                    value={label}
+                    onChange={(event) => setLabel(event.target.value)}
+                  />
+                  <FieldDescription>
+                    Applies to the typed address; picked servers keep their
+                    OpenStack name.
+                  </FieldDescription>
+                </Field>
+              </>
+            ) : null}
 
             {error ? <FieldError>{error}</FieldError> : null}
           </FieldGroup>

@@ -20,35 +20,43 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { useLastTickAt } from "@/hooks/use-live-sync"
 import { ApiError } from "@/lib/api/client"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { formatCount, formatDuration } from "@/lib/format"
 import {
-  cacheStatsQueryOptions,
-  cachedServersQueryOptions,
   collectorIntervalSeconds,
   collectorMachineHealth,
-  collectorStatusQueryOptions,
   tickSummary,
+  useCacheStatsQuery,
+  useCachedServersQuery,
+  useCollectorStatusQuery,
   useFlushCacheMutation,
   useForceTickMutation,
 } from "@/lib/queries/admin"
 import { machineName, machinesQueryOptions } from "@/lib/queries/machines"
 import {
-  metricCountsQueryOptions,
   readLatestTs,
   readSampleCount,
+  useMetricCountsQuery,
   usePurgeAllMetricsMutation,
 } from "@/lib/queries/metrics"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { RefreshCw, Trash2 } from "lucide-react"
+import { Lock, RefreshCw, Trash2 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/_authed/admin")({
   component: AdminPage,
 })
 
@@ -57,10 +65,18 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 function AdminPage() {
-  const { data: collector } = useQuery(collectorStatusQueryOptions())
-  const { data: cache } = useQuery(cacheStatsQueryOptions())
-  const { data: servers } = useQuery(cachedServersQueryOptions())
-  const { data: counts } = useQuery(metricCountsQueryOptions())
+  // Reading the collector and the cache is `admin:read`; making either of them
+  // do something is `admin:write`; the sample counts and the purge are the
+  // metrics scopes, which an admin does not automatically hold.
+  const canRead = useHasScope(SCOPES.adminRead)
+  const canWrite = useHasScope(SCOPES.adminWrite)
+  const canReadMetrics = useHasScope(SCOPES.metricsRead)
+  const canPurge = useHasScope(SCOPES.metricsWrite)
+
+  const { data: collector } = useCollectorStatusQuery()
+  const { data: cache } = useCacheStatsQuery()
+  const { data: servers } = useCachedServersQuery()
+  const { data: counts } = useMetricCountsQuery()
   const { data: machines } = useQuery(machinesQueryOptions())
   const lastTickAt = useLastTickAt(collector)
 
@@ -87,6 +103,24 @@ function AdminPage() {
     return machine ? machineName(machine) : mac
   }
 
+  if (!canRead) {
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Lock />
+          </EmptyMedia>
+          <EmptyTitle>Not your page</EmptyTitle>
+          <EmptyDescription>
+            Reading the collector and the OpenStack cache needs the{" "}
+            <code>admin:read</code> scope. Ask an administrator for a role that
+            holds it.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Admin</h1>
@@ -97,33 +131,35 @@ function AdminPage() {
           <CardDescription>
             Loop health and per-machine poll counters.
           </CardDescription>
-          <CardAction>
-            <Button
-              variant="outline"
-              disabled={tick.isPending}
-              onClick={() =>
-                tick.mutate(undefined, {
-                  onSuccess: (result) => {
-                    const { stored, failed } = tickSummary(result)
-                    toast.success(
-                      stored === null && failed === null
-                        ? "Collection round finished"
-                        : `Round finished: ${stored ?? 0} stored, ${failed ?? 0} failed`
-                    )
-                  },
-                  onError: (error) =>
-                    toast.error(errorMessage(error, "Force tick failed")),
-                })
-              }
-            >
-              {tick.isPending ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <RefreshCw data-icon="inline-start" />
-              )}
-              Force tick
-            </Button>
-          </CardAction>
+          {canWrite ? (
+            <CardAction>
+              <Button
+                variant="outline"
+                disabled={tick.isPending}
+                onClick={() =>
+                  tick.mutate(undefined, {
+                    onSuccess: (result) => {
+                      const { stored, failed } = tickSummary(result)
+                      toast.success(
+                        stored === null && failed === null
+                          ? "Collection round finished"
+                          : `Round finished: ${stored ?? 0} stored, ${failed ?? 0} failed`
+                      )
+                    },
+                    onError: (error) =>
+                      toast.error(errorMessage(error, "Force tick failed")),
+                  })
+                }
+              >
+                {tick.isPending ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <RefreshCw data-icon="inline-start" />
+                )}
+                Force tick
+              </Button>
+            </CardAction>
+          ) : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
@@ -214,29 +250,31 @@ function AdminPage() {
             The fleet as the lookup currently sees it — these are the addresses
             that can be registered.
           </CardDescription>
-          <CardAction>
-            <Button
-              variant="outline"
-              disabled={flush.isPending}
-              onClick={() =>
-                flush.mutate(undefined, {
-                  onSuccess: (result) =>
-                    toast.success(
-                      `Dropped ${result.dropped_servers} cached servers`
-                    ),
-                  onError: (error) =>
-                    toast.error(errorMessage(error, "Cache flush failed")),
-                })
-              }
-            >
-              {flush.isPending ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <Trash2 data-icon="inline-start" />
-              )}
-              Flush cache
-            </Button>
-          </CardAction>
+          {canWrite ? (
+            <CardAction>
+              <Button
+                variant="outline"
+                disabled={flush.isPending}
+                onClick={() =>
+                  flush.mutate(undefined, {
+                    onSuccess: (result) =>
+                      toast.success(
+                        `Dropped ${result.dropped_servers} cached servers`
+                      ),
+                    onError: (error) =>
+                      toast.error(errorMessage(error, "Cache flush failed")),
+                  })
+                }
+              >
+                {flush.isPending ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <Trash2 data-icon="inline-start" />
+                )}
+                Flush cache
+              </Button>
+            </CardAction>
+          ) : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
@@ -279,43 +317,49 @@ function AdminPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Stored samples</CardTitle>
-          <CardDescription>
-            Row count and newest sample per machine.
-          </CardDescription>
-          <CardAction>
-            <Button
-              variant="destructive"
-              onClick={() => setConfirmingPurge(true)}
-            >
-              <Trash2 data-icon="inline-start" />
-              Purge samples
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col">
-          {(counts ?? []).map((count, index) => {
-            const samples = readSampleCount(count)
-            const latest = readLatestTs(count)
-            return (
-              <div key={count.mac}>
-                {index > 0 ? <Separator /> : null}
-                <div className="flex items-center gap-3 px-1 py-2 text-sm">
-                  <span className="flex-1 truncate">{labelFor(count.mac)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {latest ? <RelativeTime iso={latest} /> : "no samples"}
-                  </span>
-                  <span className="font-medium tabular-nums">
-                    {samples === null ? "—" : formatCount(samples)}
-                  </span>
+      {canReadMetrics ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Stored samples</CardTitle>
+            <CardDescription>
+              Row count and newest sample per machine.
+            </CardDescription>
+            {canPurge ? (
+              <CardAction>
+                <Button
+                  variant="destructive"
+                  onClick={() => setConfirmingPurge(true)}
+                >
+                  <Trash2 data-icon="inline-start" />
+                  Purge samples
+                </Button>
+              </CardAction>
+            ) : null}
+          </CardHeader>
+          <CardContent className="flex flex-col">
+            {(counts ?? []).map((count, index) => {
+              const samples = readSampleCount(count)
+              const latest = readLatestTs(count)
+              return (
+                <div key={count.mac}>
+                  {index > 0 ? <Separator /> : null}
+                  <div className="flex items-center gap-3 px-1 py-2 text-sm">
+                    <span className="flex-1 truncate">
+                      {labelFor(count.mac)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {latest ? <RelativeTime iso={latest} /> : "no samples"}
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      {samples === null ? "—" : formatCount(samples)}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </CardContent>
-      </Card>
+              )
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Dialog
         open={confirmingPurge}

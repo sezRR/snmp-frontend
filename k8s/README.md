@@ -14,8 +14,12 @@ require CORS on the backend.
 | `PathPrefix(/api)`   | 20       | `fastapi:80`       |
 | `PathPrefix(/)`      | 10       | `snmp-frontend:80` |
 
-No `stripPrefix`: FastAPI mounts its contract under `/api` and expects the
-prefix to arrive intact.
+`stripPrefix` removes `/api` before the request reaches the backend: the API
+serves its contract at the root (`/machines`, not `/api/machines`), and the
+prefix exists only so one origin can carry both. Drop that middleware if the
+backend is started with `root_path=/api` instead — then it expects the prefix to
+arrive intact, and the image must be built with `VITE_API_PREFIX=/api` either
+way.
 
 The rules carry no `Host(...)` matcher, so this router answers on any host
 reaching the `web` entryPoint. That is what makes it work over the raw

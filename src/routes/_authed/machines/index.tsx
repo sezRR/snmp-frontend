@@ -27,7 +27,7 @@ import { useClock } from "@/hooks/use-clock"
 import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
 import {
   collectorMachineHealth,
-  collectorStatusQueryOptions,
+  useCollectorStatusQuery,
 } from "@/lib/queries/admin"
 import { machineName, machinesQueryOptions } from "@/lib/queries/machines"
 import { latestMetricsQueryOptions, samplesByMac } from "@/lib/queries/metrics"
@@ -35,7 +35,7 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Server } from "lucide-react"
 
-export const Route = createFileRoute("/machines/")({
+export const Route = createFileRoute("/_authed/machines/")({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(machinesQueryOptions()),
   pendingComponent: () => <Skeleton className="h-64 rounded-xl" />,
@@ -45,7 +45,7 @@ export const Route = createFileRoute("/machines/")({
 function MachinesPage() {
   const { data: machines } = useSuspenseQuery(machinesQueryOptions())
   const { data: latest } = useQuery(latestMetricsQueryOptions())
-  const { data: collector } = useQuery(collectorStatusQueryOptions())
+  const { data: collector } = useCollectorStatusQuery()
   const { byMac } = useFleetLiveMetrics()
   const now = useClock()
 

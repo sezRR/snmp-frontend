@@ -6,10 +6,12 @@ import {
   metricStatsRowSchema,
   purgeResultSchema,
 } from "@/lib/api/types"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { TIME_RANGES, type TimeRangeKey } from "@/lib/time-range"
 import {
   queryOptions,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
 import { z } from "zod"
@@ -72,6 +74,12 @@ export const metricCountsQueryOptions = () =>
     queryFn: () => api.get("/metrics/counts", { schema: countListSchema }),
     staleTime: 30_000,
   })
+
+/** Row counts, for a caller that may read metric history at all. */
+export function useMetricCountsQuery() {
+  const allowed = useHasScope(SCOPES.metricsRead)
+  return useQuery({ ...metricCountsQueryOptions(), enabled: allowed })
+}
 
 export function useInvalidateMetrics() {
   const queryClient = useQueryClient()

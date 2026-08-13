@@ -9,11 +9,13 @@ import {
   forceTickResultSchema,
   serverInfoSchema,
 } from "@/lib/api/types"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { machinesQueryKey } from "@/lib/queries/machines"
 import { metricsQueryKey } from "@/lib/queries/metrics"
 import {
   queryOptions,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
 import { z } from "zod"
@@ -75,6 +77,31 @@ export const cachedServersQueryOptions = () =>
       api.get("/admin/openstack/servers", { schema: serverListSchema }),
     staleTime: 60_000,
   })
+
+// Everything under /admin needs `admin:read`, which a metrics-only role does
+// not have. Polling it anyway would beat on a 403 every few seconds and leave
+// a permanent error in the cache, so each of these is gated on the scope and
+// the UI treats "not allowed" the same as "not known yet": the poll-health
+// dots go quiet, the panels do not render.
+
+export function useCollectorStatusQuery() {
+  const allowed = useHasScope(SCOPES.adminRead)
+  return useQuery({ ...collectorStatusQueryOptions(), enabled: allowed })
+}
+
+export function useCacheStatsQuery() {
+  const allowed = useHasScope(SCOPES.adminRead)
+  return useQuery({ ...cacheStatsQueryOptions(), enabled: allowed })
+}
+
+/** The registerable addresses, which only the OpenStack cache knows. */
+export function useCachedServersQuery({ enabled = true } = {}) {
+  const allowed = useHasScope(SCOPES.adminRead)
+  return useQuery({
+    ...cachedServersQueryOptions(),
+    enabled: enabled && allowed,
+  })
+}
 
 export function useForceTickMutation() {
   const queryClient = useQueryClient()

@@ -9,13 +9,15 @@ spec:
     - web
   routes:
     # The SPA calls /api on its own origin, so both routes must stay on the same
-    # entryPoint and host. FastAPI mounts its whole contract under /api and
-    # expects the prefix to survive, so there is no stripPrefix middleware here.
+    # entryPoint and host. The backend serves its contract at the root —
+    # /machines, not /api/machines — so the prefix is this router's invention
+    # and is stripped before the request reaches it.
     - kind: Rule
       match: PathPrefix(`/api`)
       # Higher than the catch-all so API calls never fall through to the SPA.
       priority: 20
       middlewares:
+        - name: snmp-api-strip-prefix
         - name: snmp-api-compress
       services:
         - name: fastapi
@@ -39,6 +41,19 @@ spec:
   #
   # tls:
   #   certResolver: letsencrypt
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: snmp-api-strip-prefix
+  labels:
+    app.kubernetes.io/name: snmp-frontend
+spec:
+  stripPrefix:
+    # Drop it only if the backend is run with `root_path=/api` instead, in
+    # which case FastAPI expects to see the prefix.
+    prefixes:
+      - /api
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

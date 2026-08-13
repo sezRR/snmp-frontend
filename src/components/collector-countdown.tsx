@@ -35,7 +35,10 @@ export function NextTickCountdown({
   // is indistinguishable from a healthy one. Say so instead.
   if (since < -SKEW_TOLERANCE_MS) {
     return (
-      <span className={className} title="Collector clock is ahead of this browser">
+      <span
+        className={className}
+        title="Collector clock is ahead of this browser"
+      >
         clock skew
       </span>
     )

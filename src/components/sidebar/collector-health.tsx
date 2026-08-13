@@ -5,18 +5,18 @@ import { SidebarFooter } from "@/components/ui/sidebar"
 import { Spinner } from "@/components/ui/spinner"
 import { useLastTickAt } from "@/hooks/use-live-sync"
 import { ApiError } from "@/lib/api/client"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { formatDuration } from "@/lib/format"
 import {
-  cacheStatsQueryOptions,
   collectorIntervalSeconds,
   collectorMachineHealth,
-  collectorStatusQueryOptions,
   tickSummary,
+  useCacheStatsQuery,
+  useCollectorStatusQuery,
   useFlushCacheMutation,
   useForceTickMutation,
 } from "@/lib/queries/admin"
 import { cn } from "@/lib/utils"
-import { useQuery } from "@tanstack/react-query"
 import { RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -30,10 +30,13 @@ function errorMessage(error: unknown, fallback: string): string {
  * read repopulates it.
  */
 export function CollectorHealthFooter() {
-  const { data: collector, isError: collectorFailed } = useQuery(
-    collectorStatusQueryOptions()
-  )
-  const { data: cache } = useQuery(cacheStatsQueryOptions())
+  // Loop internals are an admin's business; the two buttons are a further step
+  // again, since both make the collector do something.
+  const canRead = useHasScope(SCOPES.adminRead)
+  const canWrite = useHasScope(SCOPES.adminWrite)
+  const { data: collector, isError: collectorFailed } =
+    useCollectorStatusQuery()
+  const { data: cache } = useCacheStatsQuery()
   const tick = useForceTickMutation()
   const flush = useFlushCacheMutation()
 
@@ -70,6 +73,8 @@ export function CollectorHealthFooter() {
         toast.error(errorMessage(error, "Cache flush failed")),
     })
   }
+
+  if (!canRead) return null
 
   return (
     <SidebarFooter className="group-data-[collapsible=icon]:hidden">
@@ -134,20 +139,22 @@ export function CollectorHealthFooter() {
           ) : null}
         </dl>
 
-        <Button
-          size="xs"
-          variant="outline"
-          className="w-full"
-          disabled={tick.isPending}
-          onClick={handleTick}
-        >
-          {tick.isPending ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <RefreshCw data-icon="inline-start" />
-          )}
-          Force tick
-        </Button>
+        {canWrite ? (
+          <Button
+            size="xs"
+            variant="outline"
+            className="w-full"
+            disabled={tick.isPending}
+            onClick={handleTick}
+          >
+            {tick.isPending ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            Force tick
+          </Button>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border p-2 text-xs">
@@ -179,20 +186,22 @@ export function CollectorHealthFooter() {
         {cache?.last_error ? (
           <p className="text-destructive">{cache.last_error}</p>
         ) : null}
-        <Button
-          size="xs"
-          variant="outline"
-          className="w-full"
-          disabled={flush.isPending}
-          onClick={handleFlush}
-        >
-          {flush.isPending ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <Trash2 data-icon="inline-start" />
-          )}
-          Flush cache
-        </Button>
+        {canWrite ? (
+          <Button
+            size="xs"
+            variant="outline"
+            className="w-full"
+            disabled={flush.isPending}
+            onClick={handleFlush}
+          >
+            {flush.isPending ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <Trash2 data-icon="inline-start" />
+            )}
+            Flush cache
+          </Button>
+        ) : null}
       </div>
     </SidebarFooter>
   )

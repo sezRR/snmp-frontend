@@ -27,6 +27,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
 import type { Machine } from "@/lib/api/types"
 import { machineUpdateSchema } from "@/lib/api/types"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { useForceTickMutation } from "@/lib/queries/admin"
 import {
   machineName,
@@ -65,6 +66,13 @@ export function MachineActions({ machine }: MachineActionsProps) {
   const [label, setLabel] = React.useState(machine.label ?? "")
   const [ipv4, setIpv4] = React.useState(machine.ipv4)
   const [editError, setEditError] = React.useState<string | null>(null)
+
+  // Each item costs its own scope: editing and deregistering are
+  // `machines:write`, purging is `metrics:write`, and a forced round is
+  // `admin:write`. Removing from a view is local state and costs nothing.
+  const canEdit = useHasScope(SCOPES.machinesWrite)
+  const canPurge = useHasScope(SCOPES.metricsWrite)
+  const canTick = useHasScope(SCOPES.adminWrite)
 
   const navigate = useNavigate()
   // Only the machine's own detail page has to be left behind after a delete;
@@ -161,6 +169,9 @@ export function MachineActions({ machine }: MachineActionsProps) {
     })
   }
 
+  // An empty menu is worse than no menu.
+  if (!canEdit && !canPurge && !canTick && !viewId) return null
+
   return (
     <>
       <DropdownMenu>
@@ -172,25 +183,31 @@ export function MachineActions({ machine }: MachineActionsProps) {
           }
         />
         <DropdownMenuContent align="end" className="min-w-44">
-          <DropdownMenuItem
-            onClick={() => {
-              setLabel(machine.label ?? "")
-              setIpv4(machine.ipv4)
-              setEditError(null)
-              setEditing(true)
-            }}
-          >
-            <Pencil />
-            {machine.external ? "Edit" : "Rename"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleToggleEnabled}>
-            <Power />
-            {machine.enabled ? "Disable polling" : "Enable polling"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleRetry} disabled={tick.isPending}>
-            <RefreshCw />
-            Retry now
-          </DropdownMenuItem>
+          {canEdit ? (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  setLabel(machine.label ?? "")
+                  setIpv4(machine.ipv4)
+                  setEditError(null)
+                  setEditing(true)
+                }}
+              >
+                <Pencil />
+                {machine.external ? "Edit" : "Rename"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleToggleEnabled}>
+                <Power />
+                {machine.enabled ? "Disable polling" : "Enable polling"}
+              </DropdownMenuItem>
+            </>
+          ) : null}
+          {canTick ? (
+            <DropdownMenuItem onClick={handleRetry} disabled={tick.isPending}>
+              <RefreshCw />
+              Retry now
+            </DropdownMenuItem>
+          ) : null}
           {/* Only on a view page, where "remove" has somewhere to mean. */}
           {viewId ? (
             <DropdownMenuItem
@@ -203,18 +220,22 @@ export function MachineActions({ machine }: MachineActionsProps) {
               Remove from view
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setConfirmingPurge(true)}>
-            <Eraser />
-            Purge history
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => setConfirmingDelete(true)}
-          >
-            <Trash2 />
-            Deregister
-          </DropdownMenuItem>
+          {canPurge || canEdit ? <DropdownMenuSeparator /> : null}
+          {canPurge ? (
+            <DropdownMenuItem onClick={() => setConfirmingPurge(true)}>
+              <Eraser />
+              Purge history
+            </DropdownMenuItem>
+          ) : null}
+          {canEdit ? (
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 />
+              Deregister
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 

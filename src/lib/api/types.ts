@@ -1,10 +1,63 @@
 import { z } from "zod"
 
-// Mirrors the FastAPI OpenAPI document (SNMP metrics API 0.6.2). OpenStack is
+// Mirrors the FastAPI OpenAPI document (SNMP metrics API 0.7.0). OpenStack is
 // the source of truth for machine facts when it knows the address, so a
 // machine's hardware limits come from the OpenStack flavor — but a machine
 // absent from the cache is still a machine, and everything here treats those
 // facts as optional.
+
+// --- Auth -----------------------------------------------------------------
+
+export const tokenPairSchema = z.object({
+  access_token: z.string(),
+  refresh_token: z.string(),
+  token_type: z.string().default("bearer"),
+  /** Access token lifetime in seconds; the refresh token outlives it. */
+  expires_in: z.number().int(),
+})
+export type TokenPair = z.infer<typeof tokenPairSchema>
+
+/**
+ * `/auth/me`. The backend reads this from the database rather than from the
+ * presented token, so `scopes` is current even when the token predates a role
+ * change — which is what makes it safe to drive the UI's permissions from.
+ */
+export const meSchema = z.object({
+  id: z.string(),
+  username: z.string(),
+  is_active: z.boolean(),
+  roles: z.array(z.string()),
+  /** Union of the scopes this user's roles hold. */
+  scopes: z.array(z.string()),
+  created_at: z.string(),
+  updated_at: z.string(),
+})
+export type Me = z.infer<typeof meSchema>
+
+export const streamTicketSchema = z.object({
+  ticket: z.string(),
+  /** Seconds before the ticket is useless. Single-use regardless. */
+  expires_in: z.number(),
+})
+export type StreamTicket = z.infer<typeof streamTicketSchema>
+
+export const loginSchema = z.object({
+  username: z.string().min(1, "Enter your username"),
+  password: z.string().min(1, "Enter your password"),
+})
+export type LoginBody = z.infer<typeof loginSchema>
+
+export const passwordChangeSchema = z
+  .object({
+    current_password: z.string().min(1, "Enter your current password"),
+    new_password: z.string().min(1, "Enter a new password"),
+    confirm_password: z.string().min(1, "Repeat the new password"),
+  })
+  .refine((value) => value.new_password === value.confirm_password, {
+    path: ["confirm_password"],
+    message: "The two passwords do not match",
+  })
+export type PasswordChangeForm = z.infer<typeof passwordChangeSchema>
 
 export const flavorInfoSchema = z.object({
   name: z.string(),

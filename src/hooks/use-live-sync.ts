@@ -13,10 +13,12 @@ import * as React from "react"
  * collector's, so the cache is written here instead and the query's own
  * interval is left as the fallback for a stream that is down.
  *
- * Mounted once, at the root.
+ * Mounted once, in the authenticated layout — where `enabled` is false until
+ * there is a session that may read metrics, since opening the stream costs a
+ * ticket the backend would refuse.
  */
-export function useLiveMetricsSync(): void {
-  const { byMac } = useFleetLiveMetrics()
+export function useLiveMetricsSync(enabled: boolean): void {
+  const { byMac } = useFleetLiveMetrics({ enabled })
   const queryClient = useQueryClient()
 
   const newestTs = newestSampleMs(byMac)

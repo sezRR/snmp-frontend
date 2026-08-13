@@ -36,7 +36,7 @@ import {
 } from "@/lib/metrics"
 import {
   collectorMachineHealth,
-  collectorStatusQueryOptions,
+  useCollectorStatusQuery,
 } from "@/lib/queries/admin"
 import { machineName, machineQueryOptions } from "@/lib/queries/machines"
 import {
@@ -61,7 +61,7 @@ const searchSchema = z.object({
     .default("1h"),
 })
 
-export const Route = createFileRoute("/machines/$mac")({
+export const Route = createFileRoute("/_authed/machines/$mac")({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => ({ range: search.range }),
   loader: ({ context, params, deps }) =>
@@ -83,7 +83,7 @@ function MachineDetailPage() {
   const { data: machine } = useSuspenseQuery(machineQueryOptions(mac))
   const { data: stats } = useSuspenseQuery(metricStatsQueryOptions(mac, range))
   const { data: latest } = useQuery(latestMetricsQueryOptions())
-  const { data: collector } = useQuery(collectorStatusQueryOptions())
+  const { data: collector } = useCollectorStatusQuery()
   const { latest: liveSample, history, status } = useMachineLiveMetrics(mac)
 
   // The stats aggregate reads its own jsonb paths, so it can come back without

@@ -19,6 +19,13 @@ COPY . .
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
+# The path the API answers on, off whichever origin the line above picked. The
+# backend itself serves at the root, so this prefix is the proxy's convention:
+# Traefik routes /api onward and strips it. Build with an empty value to talk to
+# a backend directly.
+ARG VITE_API_PREFIX="/api"
+ENV VITE_API_PREFIX=$VITE_API_PREFIX
+
 RUN pnpm build
 
 # ---- serve ----------------------------------------------------------------

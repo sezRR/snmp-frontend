@@ -18,6 +18,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Machine } from "@/lib/api/types"
+import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import {
   machineName,
   machinesQueryOptions,
@@ -50,6 +51,7 @@ export function DeregisterMachinesDialog({
   const [picked, setPicked] = React.useState<string[]>([])
   const [error, setError] = React.useState<string | null>(null)
 
+  const canDeregister = useHasScope(SCOPES.machinesWrite)
   const { data: fleet } = useQuery(machinesQueryOptions())
   const candidates = machines ?? fleet ?? []
   const remove = useDeleteMachinesMutation()
@@ -104,6 +106,10 @@ export function DeregisterMachinesDialog({
       },
     })
   }
+
+  // Deregistering takes the machine's history with it, so the button is not
+  // offered to a user the backend would refuse.
+  if (!canDeregister) return null
 
   return (
     <Dialog

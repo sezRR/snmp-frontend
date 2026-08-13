@@ -24,12 +24,15 @@ interface StreamStore<S> {
   getSnapshot: () => StreamSnapshot<S>
 }
 
-// One EventSource per stream URL, shared by every subscriber: the stream opens
-// on the first subscriber and closes on the last, which also makes StrictMode's
+// One EventSource per stream, shared by every subscriber: the stream opens on
+// the first subscriber and closes on the last, which also makes StrictMode's
 // double-invoked subscriptions safe and keeps a dashboard of N cards on a
 // single connection instead of N.
+//
+// The URL is resolved per connection rather than passed in, because it carries
+// a single-use stream ticket: replaying the last one would be refused.
 function createSampleStream<S>(
-  url: string,
+  resolveUrl: () => Promise<string>,
   initial: S,
   reduce: (state: S, sample: MetricSample) => S,
   onStop?: () => void
@@ -41,6 +44,9 @@ function createSampleStream<S>(
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let hiddenTimer: ReturnType<typeof setTimeout> | undefined
   let attempt = 0
+  // Bumped by every connect and by stop, so a ticket still in flight when the
+  // stream is torn down or superseded cannot open a connection nobody wants.
+  let generation = 0
 
   const emit = (patch: Partial<StreamSnapshot<S>>) => {
     snapshot = { ...snapshot, ...patch }
@@ -59,9 +65,17 @@ function createSampleStream<S>(
     emit({ data: reduce(snapshot.data, parsed.data) })
   }
 
-  const connect = () => {
+  const scheduleRetry = () => {
+    attempt += 1
+    emit({ status: attempt > 3 ? "error" : "reconnecting" })
+    retryTimer = setTimeout(
+      connect,
+      Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt)
+    )
+  }
+
+  const open = (url: string, mine: number) => {
     source = new EventSource(url)
-    emit({ status: attempt === 0 ? "connecting" : "reconnecting" })
     source.onopen = () => {
       attempt = 0
       emit({ status: "open" })
@@ -72,25 +86,41 @@ function createSampleStream<S>(
     for (const name of SAMPLE_EVENTS) source.addEventListener(name, handleEvent)
     source.onmessage = handleEvent
     source.onerror = () => {
+      if (mine !== generation) return
       // EventSource retries transient drops itself; only when the browser
-      // gives up (CLOSED) do we recreate it, with capped backoff.
+      // gives up (CLOSED) do we recreate it, with capped backoff. Its own
+      // retry would replay a spent ticket, so a fresh connect is the only way
+      // back anyway.
       if (source?.readyState === EventSource.CLOSED) {
         source.close()
-        attempt += 1
-        emit({ status: attempt > 3 ? "error" : "reconnecting" })
-        retryTimer = setTimeout(
-          connect,
-          Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt)
-        )
+        source = null
+        scheduleRetry()
       } else {
         emit({ status: "reconnecting" })
       }
     }
   }
 
+  const connect = () => {
+    const mine = ++generation
+    emit({ status: attempt === 0 ? "connecting" : "reconnecting" })
+    void resolveUrl().then(
+      (url) => {
+        if (mine === generation) open(url, mine)
+      },
+      () => {
+        // No ticket, no stream — the session may have lapsed, or the backend
+        // is down. Either way the retry is the same one a dropped connection
+        // gets, so a stream left open across a refresh recovers on its own.
+        if (mine === generation) scheduleRetry()
+      }
+    )
+  }
+
   const handleVisibility = () => {
     if (document.hidden) {
       hiddenTimer = setTimeout(() => {
+        generation += 1
         source?.close()
         source = null
       }, HIDDEN_CLOSE_DELAY_MS)
@@ -106,6 +136,7 @@ function createSampleStream<S>(
   const stop = () => {
     clearTimeout(retryTimer)
     clearTimeout(hiddenTimer)
+    generation += 1
     document.removeEventListener("visibilitychange", handleVisibility)
     source?.close()
     source = null
@@ -144,7 +175,7 @@ let fleetStore: StreamStore<FleetState> | null = null
 
 function getFleetStore(): StreamStore<FleetState> {
   fleetStore ??= createSampleStream(
-    fleetStreamUrl(),
+    () => fleetStreamUrl(),
     EMPTY_FLEET,
     (state, sample) => ({ ...state, [sample.mac]: sample })
   )
@@ -155,7 +186,7 @@ function getMachineStore(mac: string): StreamStore<MachineState> {
   let store = machineStores.get(mac)
   if (!store) {
     store = createSampleStream(
-      machineStreamUrl(mac),
+      () => machineStreamUrl(mac),
       EMPTY_MACHINE,
       (state, sample) => ({
         latest: sample,

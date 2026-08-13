@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { Plugin } from "vite"
 
-// Dev-only stand-in for the FastAPI backend. Serves the same /api contract
-// (REST + SSE) as SNMP metrics API 0.6.2 so the UI is fully exercisable before
-// the real backend is reachable. Requests bypass it entirely once
-// VITE_API_BASE_URL points at a real origin.
+// Dev-only stand-in for the FastAPI backend. Serves the same contract
+// (REST + SSE + bearer auth) as SNMP metrics API 0.7.0 so the UI is fully
+// exercisable before the real backend is reachable. Requests bypass it
+// entirely once VITE_API_BASE_URL points at a real origin.
 
 interface Flavor {
   name: string
@@ -504,13 +505,215 @@ function json(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body))
 }
 
+async function readRaw(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(chunk as Buffer)
+  return Buffer.concat(chunks).toString("utf8")
+}
+
 async function readBody(
   req: IncomingMessage
 ): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  const raw = Buffer.concat(chunks).toString("utf8")
+  const raw = await readRaw(req)
   return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+}
+
+/** `/auth/login` is the one endpoint that takes a form, per the OAuth2 flow. */
+async function readForm(req: IncomingMessage): Promise<Record<string, string>> {
+  return Object.fromEntries(new URLSearchParams(await readRaw(req)))
+}
+
+// --- Auth -----------------------------------------------------------------
+// Enough of the real thing to exercise the client: bearer access tokens,
+// rotating refresh tokens, single-use stream tickets, and scopes that actually
+// refuse. Sign in as admin/admin for everything, or viewer/viewer to see the
+// read-only UI — which is the half of the behaviour a permissive mock hides.
+
+const ALL_SCOPES = [
+  "machines:read",
+  "machines:write",
+  "metrics:read",
+  "metrics:write",
+  "admin:read",
+  "admin:write",
+  "users:read",
+  "users:write",
+  "roles:read",
+  "roles:write",
+]
+
+const ROLE_SCOPES: Record<string, string[]> = {
+  admin: ALL_SCOPES,
+  operator: [
+    "machines:read",
+    "machines:write",
+    "metrics:read",
+    "metrics:write",
+    "admin:read",
+    "admin:write",
+  ],
+  viewer: ["machines:read", "metrics:read"],
+}
+
+interface MockUser {
+  id: string
+  username: string
+  password: string
+  is_active: boolean
+  roles: string[]
+  created_at: string
+  updated_at: string
+}
+
+const users: MockUser[] = [
+  {
+    id: "0a5f2d5c-0001-4c8e-9a63-9a1f00000001",
+    username: "admin",
+    password: "admin",
+    is_active: true,
+    roles: ["admin"],
+    created_at: new Date(Date.now() - 604_800_000).toISOString(),
+    updated_at: now(),
+  },
+  {
+    id: "0a5f2d5c-0002-4c8e-9a63-9a1f00000002",
+    username: "viewer",
+    password: "viewer",
+    is_active: true,
+    roles: ["viewer"],
+    created_at: new Date(Date.now() - 604_800_000).toISOString(),
+    updated_at: now(),
+  },
+]
+
+const ACCESS_TTL_SECONDS = 300
+const REFRESH_TTL_SECONDS = 86_400
+const TICKET_TTL_SECONDS = 15
+
+interface Issued {
+  username: string
+  expires_at: number
+}
+
+const accessTokens = new Map<string, Issued>()
+const refreshTokens = new Map<string, Issued>()
+const streamTickets = new Map<string, Issued>()
+
+const mint = () =>
+  randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "")
+
+function redeem(
+  store: Map<string, Issued>,
+  token: string | null
+): Issued | null {
+  if (!token) return null
+  const issued = store.get(token)
+  if (!issued) return null
+  if (issued.expires_at < Date.now()) {
+    store.delete(token)
+    return null
+  }
+  return issued
+}
+
+function issuePair(username: string) {
+  const access = mint()
+  const refresh = mint()
+  accessTokens.set(access, {
+    username,
+    expires_at: Date.now() + ACCESS_TTL_SECONDS * 1000,
+  })
+  refreshTokens.set(refresh, {
+    username,
+    expires_at: Date.now() + REFRESH_TTL_SECONDS * 1000,
+  })
+  return {
+    access_token: access,
+    refresh_token: refresh,
+    token_type: "bearer",
+    expires_in: ACCESS_TTL_SECONDS,
+  }
+}
+
+/** Ends every session a user has — what a password change does. */
+function revokeAllFor(username: string) {
+  for (const [token, issued] of refreshTokens) {
+    if (issued.username === username) refreshTokens.delete(token)
+  }
+  for (const [token, issued] of accessTokens) {
+    if (issued.username === username) accessTokens.delete(token)
+  }
+}
+
+const scopesOf = (user: MockUser): string[] => [
+  ...new Set(user.roles.flatMap((role) => ROLE_SCOPES[role] ?? [])),
+]
+
+const userByName = (username: string): MockUser | undefined =>
+  users.find((user) => user.username === username)
+
+const userResponse = (user: MockUser) => ({
+  id: user.id,
+  username: user.username,
+  is_active: user.is_active,
+  roles: user.roles,
+  scopes: scopesOf(user),
+  created_at: user.created_at,
+  updated_at: user.updated_at,
+})
+
+/** Everything reachable without a token. */
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/healthz",
+  "/readyz",
+  "/auth/login",
+  "/auth/refresh",
+])
+
+/** The scope the real backend's dependency would demand for this request. */
+function requiredScope(path: string, method: string): string | null {
+  if (path.startsWith("/admin")) {
+    return method === "GET" ? "admin:read" : "admin:write"
+  }
+  if (path === "/auth/stream-ticket") return "metrics:read"
+  if (path.startsWith("/machines")) {
+    if (path.endsWith("/metrics/stream")) return "metrics:read"
+    if (path.endsWith("/metrics")) return "metrics:write"
+    return method === "GET" ? "machines:read" : "machines:write"
+  }
+  if (path.startsWith("/metrics")) {
+    return method === "DELETE" ? "metrics:write" : "metrics:read"
+  }
+  return null
+}
+
+/**
+ * Who is calling. A header for ordinary requests; for the two SSE endpoints a
+ * single-use ticket in the query string, since EventSource cannot send headers.
+ */
+function callerFor(
+  req: IncomingMessage,
+  url: URL,
+  path: string
+): MockUser | null {
+  const header = req.headers.authorization
+  const bearer = header?.startsWith("Bearer ") ? header.slice(7) : null
+  const issued =
+    redeem(accessTokens, bearer) ??
+    (path.endsWith("/metrics/stream")
+      ? redeemTicket(url.searchParams.get("ticket"))
+      : null)
+  if (!issued) return null
+  const user = userByName(issued.username)
+  return user?.is_active ? user : null
+}
+
+/** Spent by the connection it opens, whether or not that connection lasts. */
+function redeemTicket(ticket: string | null): Issued | null {
+  const issued = redeem(streamTickets, ticket)
+  if (ticket) streamTickets.delete(ticket)
+  return issued
 }
 
 function openStream(req: IncomingMessage, res: ServerResponse, macs: string[]) {
@@ -535,7 +738,7 @@ function openStream(req: IncomingMessage, res: ServerResponse, macs: string[]) {
   })
 }
 
-export function mockSnmpApi(): Plugin {
+export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
   return {
     name: "mock-snmp-api",
     apply: "serve",
@@ -545,7 +748,7 @@ export function mockSnmpApi(): Plugin {
       const loop = setInterval(runTick, collector.interval_seconds * 1000)
       server.httpServer?.on("close", () => clearInterval(loop))
 
-      server.middlewares.use("/api", (req, res, next) => {
+      server.middlewares.use(prefix, (req, res, next) => {
         void handle(req, res).catch((error: unknown) =>
           json(res, 500, { detail: `Mock API error: ${String(error)}` })
         )
@@ -558,6 +761,88 @@ export function mockSnmpApi(): Plugin {
 
           if (path === "/healthz" || path === "/readyz" || path === "/") {
             return json(res, 200, { status: "ok", mock: "true" })
+          }
+
+          // --- auth ---------------------------------------------------------
+          if (path === "/auth/login" && method === "POST") {
+            const form = await readForm(req)
+            const user = userByName(form.username ?? "")
+            if (!user || user.password !== form.password || !user.is_active) {
+              return json(res, 401, {
+                detail: "Incorrect username or password",
+              })
+            }
+            return json(res, 200, issuePair(user.username))
+          }
+
+          if (path === "/auth/refresh" && method === "POST") {
+            const body = await readBody(req)
+            const token =
+              typeof body.refresh_token === "string" ? body.refresh_token : null
+            const issued = redeem(refreshTokens, token)
+            if (!issued) {
+              return json(res, 401, { detail: "Invalid refresh token" })
+            }
+            // Rotation: the presented token is spent, exactly as the real one
+            // is, so a client that replays it gets the 401 it should.
+            if (token) refreshTokens.delete(token)
+            return json(res, 200, issuePair(issued.username))
+          }
+
+          // Everything past here needs a caller.
+          const caller = PUBLIC_PATHS.has(path)
+            ? null
+            : callerFor(req, url, path)
+          if (!PUBLIC_PATHS.has(path) && !path.startsWith("/__dev/")) {
+            if (!caller) {
+              return json(res, 401, { detail: "Not authenticated" })
+            }
+            const scope = requiredScope(path, method)
+            if (scope && !scopesOf(caller).includes(scope)) {
+              return json(res, 403, { detail: `Requires the ${scope} scope` })
+            }
+          }
+
+          if (path === "/auth/logout" && method === "POST") {
+            const body = await readBody(req)
+            if (typeof body.refresh_token === "string") {
+              refreshTokens.delete(body.refresh_token)
+            }
+            res.writeHead(204)
+            return res.end()
+          }
+
+          if (path === "/auth/me" && method === "GET") {
+            return json(res, 200, userResponse(caller as MockUser))
+          }
+
+          if (path === "/auth/me/password" && method === "PATCH") {
+            const body = await readBody(req)
+            const user = caller as MockUser
+            if (body.current_password !== user.password) {
+              return json(res, 401, { detail: "Incorrect password" })
+            }
+            if (typeof body.new_password !== "string" || !body.new_password) {
+              return json(res, 422, { detail: "new_password: required" })
+            }
+            user.password = body.new_password
+            user.updated_at = now()
+            // Every other session ends; the caller gets a fresh pair so this
+            // one does not.
+            revokeAllFor(user.username)
+            return json(res, 200, issuePair(user.username))
+          }
+
+          if (path === "/auth/stream-ticket" && method === "POST") {
+            const ticket = mint()
+            streamTickets.set(ticket, {
+              username: (caller as MockUser).username,
+              expires_at: Date.now() + TICKET_TTL_SECONDS * 1000,
+            })
+            return json(res, 200, {
+              ticket,
+              expires_in: TICKET_TTL_SECONDS,
+            })
           }
 
           // --- machines -------------------------------------------------

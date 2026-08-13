@@ -24,15 +24,15 @@ import {
   defaultDirection,
   sortMachines,
 } from "@/lib/machine-sort"
-import { cachedServersQueryOptions } from "@/lib/queries/admin"
+import { useCachedServersQuery } from "@/lib/queries/admin"
 import { machinesQueryOptions } from "@/lib/queries/machines"
 import { latestMetricsQueryOptions } from "@/lib/queries/metrics"
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
+import { useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Server } from "lucide-react"
 import * as React from "react"
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authed/")({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(machinesQueryOptions()),
@@ -44,7 +44,7 @@ export const Route = createFileRoute("/")({
 
 function DashboardPage() {
   const { data: machines } = useSuspenseQuery(machinesQueryOptions())
-  const { data: servers } = useQuery(cachedServersQueryOptions())
+  const { data: servers } = useCachedServersQuery()
   const samples = useMachineSamples()
 
   const [filter, setFilter] = React.useState<MachineFilter>(EMPTY_FILTER)

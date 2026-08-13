@@ -9,128 +9,184 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as MachinesIndexRouteImport } from './routes/machines/index'
-import { Route as MachinesMacRouteImport } from './routes/machines/$mac'
-import { Route as ViewsViewIdRouteImport } from './routes/views/$viewId'
+import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
+import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
+import { Route as AuthedMachinesIndexRouteImport } from './routes/_authed/machines/index'
+import { Route as AuthedMachinesMacRouteImport } from './routes/_authed/machines/$mac'
+import { Route as AuthedViewsViewIdRouteImport } from './routes/_authed/views/$viewId'
 
-const IndexRoute = IndexRouteImport.update({
+const AuthedRoute = AuthedRouteImport.update({
+  id: '/_authed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedIndexRoute = AuthedIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
-const AdminRoute = AdminRouteImport.update({
+const AuthedAdminRoute = AuthedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
-const MachinesIndexRoute = MachinesIndexRouteImport.update({
+const AuthedMachinesIndexRoute = AuthedMachinesIndexRouteImport.update({
   id: '/machines/',
   path: '/machines/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
-const MachinesMacRoute = MachinesMacRouteImport.update({
+const AuthedMachinesMacRoute = AuthedMachinesMacRouteImport.update({
   id: '/machines/$mac',
   path: '/machines/$mac',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
-const ViewsViewIdRoute = ViewsViewIdRouteImport.update({
+const AuthedViewsViewIdRoute = AuthedViewsViewIdRouteImport.update({
   id: '/views/$viewId',
   path: '/views/$viewId',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/machines/$mac': typeof MachinesMacRoute
-  '/views/$viewId': typeof ViewsViewIdRoute
-  '/machines/': typeof MachinesIndexRoute
+  '/': typeof AuthedIndexRoute
+  '/login': typeof LoginRoute
+  '/admin': typeof AuthedAdminRoute
+  '/machines/$mac': typeof AuthedMachinesMacRoute
+  '/views/$viewId': typeof AuthedViewsViewIdRoute
+  '/machines/': typeof AuthedMachinesIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/machines/$mac': typeof MachinesMacRoute
-  '/views/$viewId': typeof ViewsViewIdRoute
-  '/machines': typeof MachinesIndexRoute
+  '/login': typeof LoginRoute
+  '/admin': typeof AuthedAdminRoute
+  '/': typeof AuthedIndexRoute
+  '/machines/$mac': typeof AuthedMachinesMacRoute
+  '/views/$viewId': typeof AuthedViewsViewIdRoute
+  '/machines': typeof AuthedMachinesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/machines/$mac': typeof MachinesMacRoute
-  '/views/$viewId': typeof ViewsViewIdRoute
-  '/machines/': typeof MachinesIndexRoute
+  '/_authed': typeof AuthedRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_authed/admin': typeof AuthedAdminRoute
+  '/_authed/': typeof AuthedIndexRoute
+  '/_authed/machines/$mac': typeof AuthedMachinesMacRoute
+  '/_authed/views/$viewId': typeof AuthedViewsViewIdRoute
+  '/_authed/machines/': typeof AuthedMachinesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/machines/$mac' | '/views/$viewId' | '/machines/'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/machines/$mac' | '/views/$viewId' | '/machines'
-  id:
-    | '__root__'
+  fullPaths:
     | '/'
+    | '/login'
     | '/admin'
     | '/machines/$mac'
     | '/views/$viewId'
     | '/machines/'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/login'
+    | '/admin'
+    | '/'
+    | '/machines/$mac'
+    | '/views/$viewId'
+    | '/machines'
+  id:
+    | '__root__'
+    | '/_authed'
+    | '/login'
+    | '/_authed/admin'
+    | '/_authed/'
+    | '/_authed/machines/$mac'
+    | '/_authed/views/$viewId'
+    | '/_authed/machines/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
-  MachinesMacRoute: typeof MachinesMacRoute
-  ViewsViewIdRoute: typeof ViewsViewIdRoute
-  MachinesIndexRoute: typeof MachinesIndexRoute
+  AuthedRoute: typeof AuthedRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_authed': {
+      id: '/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/': {
+      id: '/_authed/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthedIndexRouteImport
+      parentRoute: typeof AuthedRoute
     }
-    '/admin': {
-      id: '/admin'
+    '/_authed/admin': {
+      id: '/_authed/admin'
       path: '/admin'
       fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthedAdminRouteImport
+      parentRoute: typeof AuthedRoute
     }
-    '/machines/': {
-      id: '/machines/'
+    '/_authed/machines/': {
+      id: '/_authed/machines/'
       path: '/machines'
       fullPath: '/machines/'
-      preLoaderRoute: typeof MachinesIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthedMachinesIndexRouteImport
+      parentRoute: typeof AuthedRoute
     }
-    '/machines/$mac': {
-      id: '/machines/$mac'
+    '/_authed/machines/$mac': {
+      id: '/_authed/machines/$mac'
       path: '/machines/$mac'
       fullPath: '/machines/$mac'
-      preLoaderRoute: typeof MachinesMacRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthedMachinesMacRouteImport
+      parentRoute: typeof AuthedRoute
     }
-    '/views/$viewId': {
-      id: '/views/$viewId'
+    '/_authed/views/$viewId': {
+      id: '/_authed/views/$viewId'
       path: '/views/$viewId'
       fullPath: '/views/$viewId'
-      preLoaderRoute: typeof ViewsViewIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthedViewsViewIdRouteImport
+      parentRoute: typeof AuthedRoute
     }
   }
 }
 
+interface AuthedRouteChildren {
+  AuthedAdminRoute: typeof AuthedAdminRoute
+  AuthedIndexRoute: typeof AuthedIndexRoute
+  AuthedMachinesMacRoute: typeof AuthedMachinesMacRoute
+  AuthedViewsViewIdRoute: typeof AuthedViewsViewIdRoute
+  AuthedMachinesIndexRoute: typeof AuthedMachinesIndexRoute
+}
+
+const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAdminRoute: AuthedAdminRoute,
+  AuthedIndexRoute: AuthedIndexRoute,
+  AuthedMachinesMacRoute: AuthedMachinesMacRoute,
+  AuthedViewsViewIdRoute: AuthedViewsViewIdRoute,
+  AuthedMachinesIndexRoute: AuthedMachinesIndexRoute,
+}
+
+const AuthedRouteWithChildren =
+  AuthedRoute._addFileChildren(AuthedRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
-  MachinesMacRoute: MachinesMacRoute,
-  ViewsViewIdRoute: ViewsViewIdRoute,
-  MachinesIndexRoute: MachinesIndexRoute,
+  AuthedRoute: AuthedRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

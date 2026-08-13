@@ -3,9 +3,8 @@ import { useMachineSamples } from "@/hooks/use-machine-samples"
 import type { Machine } from "@/lib/api/types"
 import {
   collectorMachineHealth,
-  collectorStatusQueryOptions,
+  useCollectorStatusQuery,
 } from "@/lib/queries/admin"
-import { useQuery } from "@tanstack/react-query"
 
 /**
  * The card grid shared by the dashboard and saved views. Live samples arrive
@@ -13,7 +12,7 @@ import { useQuery } from "@tanstack/react-query"
  * the first event lands.
  */
 export function MachineGrid({ machines }: { machines: Machine[] }) {
-  const { data: collector } = useQuery(collectorStatusQueryOptions())
+  const { data: collector } = useCollectorStatusQuery()
   const samples = useMachineSamples()
 
   const health = collectorMachineHealth(collector)

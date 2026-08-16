@@ -1,6 +1,4 @@
-import { NextTickCountdown } from "@/components/collector-countdown"
 import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
-import { RelativeTime } from "@/components/relative-time"
 import { MachineStatusDot } from "@/components/sidebar/machine-status-dot"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,12 +27,10 @@ import {
 } from "@/components/ui/empty"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
-import { useLastTickAt } from "@/hooks/use-live-sync"
 import { ApiError } from "@/lib/api/client"
 import { SCOPES, useHasScope } from "@/lib/auth/scopes"
-import { formatCount, formatDuration } from "@/lib/format"
+import { formatCount, formatDuration, formatTimestamp } from "@/lib/format"
 import {
-  collectorIntervalSeconds,
   collectorMachineHealth,
   tickSummary,
   useCacheStatsQuery,
@@ -78,7 +74,6 @@ function AdminPage() {
   const { data: servers } = useCachedServersQuery()
   const { data: counts } = useMetricCountsQuery()
   const { data: machines } = useQuery(machinesQueryOptions())
-  const lastTickAt = useLastTickAt(collector)
 
   const tick = useForceTickMutation()
   const flush = useFlushCacheMutation()
@@ -88,7 +83,6 @@ function AdminPage() {
   const before = cutoff?.toISOString()
 
   const health = Object.values(collectorMachineHealth(collector))
-  const intervalSeconds = collectorIntervalSeconds(collector)
   const ticks = collector?.tick_count ?? collector?.ticks
   // What the last round did, which is the first thing worth knowing when
   // every machine reads zero samples.
@@ -162,7 +156,11 @@ function AdminPage() {
           ) : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+          {/* Counters and durations only. "Last tick N ago" and a countdown to
+              the next round were both this browser's clock minus the
+              collector's, which on a fleet without reliable NTP measured the
+              disagreement rather than the loop. */}
+          <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <Fact
               label="State"
               value={collector?.running === false ? "stopped" : "running"}
@@ -172,31 +170,14 @@ function AdminPage() {
               value={
                 typeof collector?.interval_seconds === "number"
                   ? formatDuration(collector.interval_seconds)
-                  : "—"
+                  : "n/a"
               }
             />
             <Fact
-              label="Last tick"
-              value={lastTickAt ? <RelativeTime iso={lastTickAt} /> : "—"}
+              label="Rounds"
+              value={typeof ticks === "number" ? formatCount(ticks) : "n/a"}
             />
-            <Fact
-              label="Next tick"
-              value={
-                lastTickAt && intervalSeconds !== null ? (
-                  <NextTickCountdown
-                    lastTickAt={lastTickAt}
-                    intervalSeconds={intervalSeconds}
-                  />
-                ) : (
-                  "—"
-                )
-              }
-            />
-            <Fact
-              label="Ticks"
-              value={typeof ticks === "number" ? formatCount(ticks) : "—"}
-            />
-            <Fact label="Last round" value={lastRound ?? "—"} />
+            <Fact label="Last round" value={lastRound ?? "n/a"} />
           </dl>
           {(collector?.last_tick_error ?? collector?.last_error) ? (
             <p className="text-sm text-destructive">
@@ -221,12 +202,9 @@ function AdminPage() {
                     {entry.lastError ? (
                       <span className="truncate text-xs text-destructive">
                         {entry.lastError}
-                        {entry.lastErrorAt ? (
-                          <>
-                            {" · "}
-                            <RelativeTime iso={entry.lastErrorAt} />
-                          </>
-                        ) : null}
+                        {entry.lastErrorAt
+                          ? ` · ${formatTimestamp(entry.lastErrorAt)}`
+                          : null}
                       </span>
                     ) : null}
                     <Badge variant="secondary">{entry.okCount ?? 0} ok</Badge>
@@ -247,7 +225,7 @@ function AdminPage() {
         <CardHeader>
           <CardTitle>OpenStack cache</CardTitle>
           <CardDescription>
-            The fleet as the lookup currently sees it — these are the addresses
+            The fleet as the lookup currently sees it. These are the addresses
             that can be registered.
           </CardDescription>
           {canWrite ? (
@@ -285,7 +263,7 @@ function AdminPage() {
               value={
                 typeof cache?.age_seconds === "number"
                   ? `${formatDuration(cache.age_seconds)} / ${formatDuration(cache.ttl_seconds)}`
-                  : "—"
+                  : "n/a"
               }
             />
             <Fact
@@ -348,10 +326,10 @@ function AdminPage() {
                       {labelFor(count.mac)}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {latest ? <RelativeTime iso={latest} /> : "no samples"}
+                      {latest ? formatTimestamp(latest) : "no samples"}
                     </span>
                     <span className="font-medium tabular-nums">
-                      {samples === null ? "—" : formatCount(samples)}
+                      {samples === null ? "n/a" : formatCount(samples)}
                     </span>
                   </div>
                 </div>

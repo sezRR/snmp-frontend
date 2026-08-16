@@ -91,6 +91,12 @@ export const machineSchema = z.object({
    * nowhere else. Defaulted so a backend older than 0.6.2 still parses.
    */
   external: z.boolean().default(false),
+  /**
+   * The SNMP profile the collector authenticates with. Null means the machine
+   * is registered but not polled — there is nothing to poll it with — which is
+   * why registration offers to bind one straight away.
+   */
+  credential_id: z.string().nullish(),
   created_at: z.string(),
   updated_at: z.string(),
   // Null when OpenStack no longer knows the MAC — reported, never faked.
@@ -131,6 +137,188 @@ export const machineUpdateSchema = z.object({
   ipv4: z.ipv4("Enter a valid IPv4 address").optional(),
 })
 export type MachineUpdate = z.infer<typeof machineUpdateSchema>
+
+// --- SNMP credentials -----------------------------------------------------
+// A profile is created once and bound to as many machines as share it. The
+// secret is write-only: the backend encrypts it on the way in and never reads
+// it back, so everything below describes a credential without carrying one.
+
+export const SNMP_VERSIONS = ["2c", "3"] as const
+export const snmpVersionSchema = z.enum(SNMP_VERSIONS)
+export type SnmpVersion = z.infer<typeof snmpVersionSchema>
+
+export const SECURITY_LEVELS = [
+  "noAuthNoPriv",
+  "authNoPriv",
+  "authPriv",
+] as const
+export const securityLevelSchema = z.enum(SECURITY_LEVELS)
+export type SecurityLevel = z.infer<typeof securityLevelSchema>
+
+export const AUTH_PROTOCOLS = [
+  "MD5",
+  "SHA",
+  "SHA224",
+  "SHA256",
+  "SHA384",
+  "SHA512",
+] as const
+export const authProtocolSchema = z.enum(AUTH_PROTOCOLS)
+export type AuthProtocol = z.infer<typeof authProtocolSchema>
+
+export const PRIV_PROTOCOLS = [
+  "DES",
+  "3DES",
+  "AES128",
+  "AES192",
+  "AES256",
+] as const
+export const privProtocolSchema = z.enum(PRIV_PROTOCOLS)
+export type PrivProtocol = z.infer<typeof privProtocolSchema>
+
+/**
+ * Choices the backend refuses outright unless `allow_weak` is set. MD5 and DES
+ * are broken rather than merely dated, and noAuthNoPriv sends the whole
+ * exchange in clear — so each is a deliberate opt-in, never a default.
+ */
+export const WEAK_AUTH_PROTOCOLS: readonly string[] = ["MD5"]
+export const WEAK_PRIV_PROTOCOLS: readonly string[] = ["DES"]
+
+/** A credential as the API returns it. There is no secret field here. */
+export const snmpCredentialSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullish(),
+  snmp_version: snmpVersionSchema,
+  username: z.string().nullish(),
+  security_level: securityLevelSchema.nullish(),
+  auth_protocol: authProtocolSchema.nullish(),
+  priv_protocol: privProtocolSchema.nullish(),
+  /** Bumped whenever the secret is replaced, so a rotation is visible. */
+  secret_version: z.number().int(),
+  /** Of the secret, so two profiles can be told apart without reading either. */
+  fingerprint: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+})
+export type SnmpCredential = z.infer<typeof snmpCredentialSchema>
+
+const passphraseSchema = z
+  .string()
+  .min(8, "Passphrases are at least 8 characters")
+  .max(200)
+
+/**
+ * The USM shape, validated the way the backend validates it.
+ *
+ * Half a v3 credential is not repairable — authPriv without a priv passphrase
+ * is a row no validator could fix — so the fields are checked together rather
+ * than one at a time, and the message names the field that is missing.
+ */
+export const snmpCredentialFormSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name the credential").max(200),
+    description: z.string().max(1000).optional(),
+    snmp_version: snmpVersionSchema,
+    /** v2c only. */
+    community: z.string().min(1, "Enter the community string").optional(),
+    /** v3 only: the USM securityName. */
+    username: z.string().max(200).optional(),
+    security_level: securityLevelSchema.optional(),
+    auth_protocol: authProtocolSchema.optional(),
+    auth_passphrase: passphraseSchema.optional(),
+    priv_protocol: privProtocolSchema.optional(),
+    priv_passphrase: passphraseSchema.optional(),
+    allow_weak: z.boolean().default(false),
+  })
+  .superRefine((value, ctx) => {
+    const require = (
+      field: keyof typeof value,
+      present: unknown,
+      message: string
+    ) => {
+      if (present === undefined || present === null || present === "") {
+        ctx.addIssue({ code: "custom", path: [field], message })
+      }
+    }
+
+    if (value.snmp_version === "2c") {
+      require("community", value.community, "Enter the community string")
+      return
+    }
+
+    require("username", value.username, "Enter the SNMPv3 username")
+    const level = value.security_level
+    if (level === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["security_level"],
+        message: "Pick a security level",
+      })
+      return
+    }
+
+    if (level === "noAuthNoPriv" && !value.allow_weak) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["security_level"],
+        message:
+          "noAuthNoPriv sends the exchange in clear. Allow weak settings to use it.",
+      })
+    }
+
+    if (level === "authNoPriv" || level === "authPriv") {
+      require("auth_protocol", value.auth_protocol, "Pick an auth protocol")
+      require(
+        "auth_passphrase",
+        value.auth_passphrase,
+        "Enter the auth passphrase"
+      )
+      if (
+        value.auth_protocol &&
+        WEAK_AUTH_PROTOCOLS.includes(value.auth_protocol) &&
+        !value.allow_weak
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["auth_protocol"],
+          message: `${value.auth_protocol} is broken. Allow weak settings to use it.`,
+        })
+      }
+    }
+
+    if (level === "authPriv") {
+      require("priv_protocol", value.priv_protocol, "Pick a privacy protocol")
+      require(
+        "priv_passphrase",
+        value.priv_passphrase,
+        "Enter the privacy passphrase"
+      )
+      if (
+        value.priv_protocol &&
+        WEAK_PRIV_PROTOCOLS.includes(value.priv_protocol) &&
+        !value.allow_weak
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["priv_protocol"],
+          message: `${value.priv_protocol} is broken. Allow weak settings to use it.`,
+        })
+      }
+    }
+  })
+export type SnmpCredentialForm = z.infer<typeof snmpCredentialFormSchema>
+
+export const credentialTestResultSchema = z.object({
+  ok: z.boolean(),
+  ipv4: z.string(),
+  credential_id: z.string().nullish(),
+  duration_seconds: z.number(),
+  detail: z.string().nullish(),
+  /** True when the backend answered from its fault injector, not from SNMP. */
+  simulated: z.boolean().default(false),
+})
+export type CredentialTestResult = z.infer<typeof credentialTestResultSchema>
 
 // --- Metric samples -------------------------------------------------------
 // `metrics` is jsonb on the backend and deliberately untyped there, so every

@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { useClock } from "@/hooks/use-clock"
 import type { Machine, MetricSample } from "@/lib/api/types"
 import {
   formatBps,
@@ -33,7 +32,7 @@ import {
 } from "lucide-react"
 
 const diskRate = (value: number | null): string =>
-  value === null ? "—" : formatBytesRate(value)
+  value === null ? "n/a" : formatBytesRate(value)
 
 interface MachineCardProps {
   machine: Machine
@@ -44,7 +43,6 @@ interface MachineCardProps {
 
 export function MachineCard({ machine, sample, failing }: MachineCardProps) {
   const snapshot = sample ? normalizeSample(sample, machine) : null
-  const now = useClock()
   const vcpus = snapshot?.cpuCores ?? machine.openstack?.flavor.vcpus ?? null
 
   return (
@@ -54,9 +52,8 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
           <MachineStatusDot
             health={machineHealth({
               enabled: machine.enabled,
-              latestTs: sample?.ts,
+              hasSample: sample !== undefined,
               failing,
-              now,
             })}
           />
           <Link
@@ -73,6 +70,12 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
             {!machine.enabled ? (
               <Badge variant="secondary">disabled</Badge>
             ) : null}
+            {/* Registered with nothing to authenticate a poll with, so the
+                collector skips it entirely — worth saying out loud, since
+                every metric below would otherwise just read "n/a". */}
+            {machine.credential_id ? null : (
+              <Badge variant="destructive">no credential</Badge>
+            )}
             {/* Expected for an external machine, so that states the fact. A
                 managed one missing its record is a machine that moved or was
                 deleted in OpenStack after registration — worth flagging. */}
@@ -107,31 +110,31 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
             <dt className="text-xs text-muted-foreground">CPU</dt>
             <dd className="font-medium tabular-nums">
               {snapshot?.cpuPercent == null
-                ? "—"
+                ? "n/a"
                 : formatPercent(snapshot.cpuPercent)}
             </dd>
             <dd className="text-xs text-muted-foreground tabular-nums">
-              {vcpus === null ? "—" : `${vcpus} vCPU`}
+              {vcpus === null ? "n/a" : `${vcpus} vCPU`}
             </dd>
           </div>
           <div className="flex flex-col gap-0.5">
             <dt className="text-xs text-muted-foreground">RAM</dt>
             <dd className="font-medium tabular-nums">
               {snapshot?.ram.usedPercent == null
-                ? "—"
+                ? "n/a"
                 : formatPercent(snapshot.ram.usedPercent)}
             </dd>
             <dd className="text-xs text-muted-foreground tabular-nums">
               {snapshot
                 ? formatUsage(snapshot.ram.usedBytes, snapshot.ram.totalBytes)
-                : "—"}
+                : "n/a"}
             </dd>
           </div>
           <div className="flex flex-col gap-0.5">
             <dt className="text-xs text-muted-foreground">Disk</dt>
             <dd className="font-medium tabular-nums">
               {snapshot?.primaryDisk?.usedPercent == null
-                ? "—"
+                ? "n/a"
                 : formatPercent(snapshot.primaryDisk.usedPercent)}
             </dd>
             <dd className="text-xs text-muted-foreground tabular-nums">
@@ -140,7 +143,7 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
                     snapshot.primaryDisk.usedBytes,
                     snapshot.primaryDisk.totalBytes
                   )
-                : "—"}
+                : "n/a"}
             </dd>
           </div>
           <div className="flex flex-col gap-0.5">
@@ -162,13 +165,13 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
               <span className="flex items-center gap-1">
                 <ArrowDown className="size-3 text-chart-3" />
                 {snapshot?.net.rxBps == null
-                  ? "—"
+                  ? "n/a"
                   : formatBps(snapshot.net.rxBps)}
               </span>
               <span className="flex items-center gap-1">
                 <ArrowUp className="size-3 text-chart-4" />
                 {snapshot?.net.txBps == null
-                  ? "—"
+                  ? "n/a"
                   : formatBps(snapshot.net.txBps)}
               </span>
             </dd>

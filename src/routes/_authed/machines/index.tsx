@@ -1,7 +1,6 @@
 import { AddMachineDialog } from "@/components/machines/add-machine-dialog"
 import { DeregisterMachinesDialog } from "@/components/machines/deregister-machines-dialog"
 import { MachineActions } from "@/components/machines/machine-actions"
-import { RelativeTime } from "@/components/relative-time"
 import {
   MachineStatusDot,
   machineHealth,
@@ -23,8 +22,8 @@ import {
 } from "@/components/ui/empty"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useClock } from "@/hooks/use-clock"
 import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
+import { formatTimestamp } from "@/lib/format"
 import {
   collectorMachineHealth,
   useCollectorStatusQuery,
@@ -47,7 +46,6 @@ function MachinesPage() {
   const { data: latest } = useQuery(latestMetricsQueryOptions())
   const { data: collector } = useCollectorStatusQuery()
   const { byMac } = useFleetLiveMetrics()
-  const now = useClock()
 
   const latestByMac = samplesByMac(latest ?? [])
   const health = collectorMachineHealth(collector)
@@ -69,7 +67,7 @@ function MachinesPage() {
             </EmptyMedia>
             <EmptyTitle>No machines registered</EmptyTitle>
             <EmptyDescription>
-              Register an address to start polling it — the OpenStack cache is
+              Register an address to start polling it. The OpenStack cache is
               offered as a shortcut, not a requirement.
             </EmptyDescription>
           </EmptyHeader>
@@ -93,9 +91,8 @@ function MachinesPage() {
                     <MachineStatusDot
                       health={machineHealth({
                         enabled: machine.enabled,
-                        latestTs: sample?.ts,
+                        hasSample: sample !== undefined,
                         failing: health[machine.mac]?.failing,
-                        now,
                       })}
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -109,14 +106,12 @@ function MachinesPage() {
                       <span className="truncate text-xs text-muted-foreground">
                         {machine.ipv4} ·{" "}
                         <span className="font-mono">{machine.mac}</span>
-                        {sample ? (
-                          <>
-                            {" · sampled "}
-                            <RelativeTime iso={sample.ts} />
-                          </>
-                        ) : (
-                          " · no samples"
-                        )}
+                        {/* The collector's own stamp, shown as it recorded it.
+                            Ageing it against this browser would only report
+                            how far the two clocks have drifted apart. */}
+                        {sample
+                          ? ` · sampled ${formatTimestamp(sample.ts)}`
+                          : " · no samples"}
                       </span>
                     </div>
                     {machine.openstack ? (
@@ -131,6 +126,9 @@ function MachinesPage() {
                     {!machine.enabled ? (
                       <Badge variant="secondary">disabled</Badge>
                     ) : null}
+                    {machine.credential_id ? null : (
+                      <Badge variant="destructive">no credential</Badge>
+                    )}
                     <MachineActions machine={machine} />
                   </div>
                 </div>

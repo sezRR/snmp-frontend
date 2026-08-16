@@ -52,7 +52,7 @@ export function DiskCard({ disks }: { disks: DiskReading[] }) {
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-center gap-3">
         {disks.length === 0 ? (
-          <span className="text-sm text-muted-foreground">—</span>
+          <span className="text-sm text-muted-foreground">n/a</span>
         ) : (
           <div
             className={cn(
@@ -79,7 +79,7 @@ export function DiskCard({ disks }: { disks: DiskReading[] }) {
                   </span>
                   <span className="font-medium tabular-nums">
                     {disk.usedPercent === null
-                      ? "—"
+                      ? "n/a"
                       : formatPercent(disk.usedPercent)}
                   </span>
                 </div>

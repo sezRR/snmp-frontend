@@ -16,6 +16,8 @@ export const SCOPES = {
   usersWrite: "users:write",
   rolesRead: "roles:read",
   rolesWrite: "roles:write",
+  credentialsRead: "credentials:read",
+  credentialsWrite: "credentials:write",
 } as const
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES]

@@ -96,7 +96,7 @@ function LoginPage() {
           </div>
           <CardTitle>Sign in</CardTitle>
           <CardDescription>
-            SNMP Monitor — OpenStack fleet metrics
+            SNMP Monitor · OpenStack fleet metrics
           </CardDescription>
         </CardHeader>
         <CardContent>

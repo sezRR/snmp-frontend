@@ -247,7 +247,7 @@ export function MachineActions({ machine }: MachineActionsProps) {
             </DialogTitle>
             <DialogDescription>
               {machine.external
-                ? "An external machine's address is yours to move — nothing upstream knows where it went. Its MAC stays fixed as its identity."
+                ? "An external machine's address is yours to move, since nothing upstream knows where it went. Its MAC stays fixed as its identity."
                 : "The label is yours; the MAC and address come from OpenStack."}
             </DialogDescription>
           </DialogHeader>

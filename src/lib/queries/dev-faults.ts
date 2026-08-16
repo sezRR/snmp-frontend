@@ -31,8 +31,8 @@ export const FAULT_LABELS: Record<Fault, string> = {
 
 export const FAULT_DESCRIPTIONS: Record<Fault, string> = {
   none: "Polls succeed and samples keep arriving.",
-  host_down: "Poll times out — no new samples, collector failures climb.",
-  snmpd_inactive: "udp/161 refused — the host is up but the agent is not.",
+  host_down: "Poll times out. No new samples, collector failures climb.",
+  snmpd_inactive: "udp/161 refused. The host is up but the agent is not.",
   collection_failed: "The walk errors out on a missing OID.",
   openstack_deleted:
     "The MAC vanishes from OpenStack: openstack_found goes false and the flavor limits disappear.",

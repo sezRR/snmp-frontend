@@ -21,9 +21,9 @@ export function formatBytes(bytes: number, digits = 1): string {
 
 /** "10.5 GiB / 16.0 GiB" — used against a limit, the em dash when unknown. */
 export function formatUsage(used: number | null, total: number | null): string {
-  if (used === null && total === null) return "—"
+  if (used === null && total === null) return "n/a"
   if (total === null) return formatBytes(used ?? 0)
-  if (used === null) return `— / ${formatBytes(total)}`
+  if (used === null) return `n/a / ${formatBytes(total)}`
   return `${formatBytes(used)} / ${formatBytes(total)}`
 }
 
@@ -65,47 +65,23 @@ export function formatDateTime(value: string | number | Date): string {
   })
 }
 
-const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {
-  numeric: "auto",
-})
-
 /**
- * How far ahead of the browser a timestamp may sit and still be treated as
- * clock drift. Beyond this the two clocks genuinely disagree — a VM guest that
- * never synced, or one whose RTC is set to local time and read as UTC — and
- * clamping would silently pin every value to "now" forever.
+ * A timestamp the collector stamped, shown as-is.
+ *
+ * There is deliberately no "N seconds ago" anywhere in this app. Elapsed time
+ * is the browser's clock minus a machine's, and the machines this polls do not
+ * all keep NTP — one whose RTC is set to local time and read as UTC would
+ * report samples "in 3 hours", and one drifting the other way would look dead.
+ * An absolute timestamp is a fact the sender recorded; a relative one is a
+ * subtraction between two clocks that disagree.
  */
-export const SKEW_TOLERANCE_MS = 5_000
-
-/** `now` is passed in so callers can drive it from the shared clock. */
-export function formatRelativeTime(
-  iso: string,
-  now: number = Date.now()
-): string {
-  const parsed = new Date(iso).getTime()
-  if (!Number.isFinite(parsed)) return "—"
-  // Every timestamp shown here is something that already happened. The
-  // collector stamps samples from its own clock, so one a second or two ahead
-  // of the browser's is drift, not the future — clamping keeps it at "now"
-  // instead of counting down "in 1 second". A larger gap is not drift, so fall
-  // back to the absolute time rather than reporting a frozen "now".
-  const drift = parsed - now
-  if (drift > SKEW_TOLERANCE_MS) return formatDateTime(parsed)
-  const deltaSeconds = Math.min(0, drift / 1000)
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["day", 86_400],
-    ["hour", 3_600],
-    ["minute", 60],
-  ]
-  for (const [unit, seconds] of units) {
-    if (Math.abs(deltaSeconds) >= seconds) {
-      return relativeFormatter.format(Math.round(deltaSeconds / seconds), unit)
-    }
-  }
-  // `|| 0` folds -0 onto 0, which is what formats as "now".
-  return relativeFormatter.format(Math.round(deltaSeconds) || 0, "second")
+export function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "n/a"
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? formatDateTime(parsed) : "n/a"
 }
 
+/** A configured period — a duration, not a point on anyone's clock. */
 export function formatDuration(seconds: number): string {
   if (seconds < 1) return `${Math.round(seconds * 1000)} ms`
   if (seconds < 60) return `${seconds.toFixed(1)} s`

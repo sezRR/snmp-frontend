@@ -1,5 +1,5 @@
 import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
-import type { CollectorStatus, MetricSample } from "@/lib/api/types"
+import type { MetricSample } from "@/lib/api/types"
 import { latestMetricsQueryOptions } from "@/lib/queries/metrics"
 import { useQueryClient } from "@tanstack/react-query"
 import * as React from "react"
@@ -35,28 +35,6 @@ export function useLiveMetricsSync(enabled: boolean): void {
         mergeLatest(previous ?? [], byMac)
     )
   }, [newestTs, byMac, queryClient])
-}
-
-/**
- * When the last collection round happened, as well as the client can know.
- *
- * `/admin/collector` reports the round that had finished when it was last
- * fetched, so its timestamp is stale by up to a poll interval and its counter
- * resets late. A sample on the stream is first-hand evidence of a round and
- * arrives the moment one produces data, so it wins whenever it is newer.
- */
-export function useLastTickAt(
-  status: CollectorStatus | undefined
-): string | null {
-  const { byMac } = useFleetLiveMetrics()
-  const reported = status?.last_tick_at ?? null
-  const streamed = newestSampleMs(byMac)
-
-  if (streamed === 0) return reported
-  if (reported === null) return new Date(streamed).toISOString()
-  return streamed > Date.parse(reported)
-    ? new Date(streamed).toISOString()
-    : reported
 }
 
 function newestSampleMs(byMac: Record<string, MetricSample>): number {

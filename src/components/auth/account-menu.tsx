@@ -48,7 +48,10 @@ export function AccountMenu() {
                 {me?.username ?? "Signed in"}
               </span>
               <span className="truncate text-xs font-normal text-muted-foreground">
-                {me?.roles.length ? me.roles.join(", ") : "no roles"}
+                Roles:{" "}
+                <span>
+                  {me?.roles.length ? me.roles.join(", ") : "no roles"}
+                </span>
               </span>
             </DropdownMenuLabel>
           </DropdownMenuGroup>

@@ -72,7 +72,7 @@ function Direction({
           {label}
         </span>
         <span className="text-xl font-bold tabular-nums">
-          {bps === null ? "—" : formatBps(bps)}
+          {bps === null ? "n/a" : formatBps(bps)}
         </span>
       </div>
       {/* Against the link speed, so a number has a ceiling to mean something. */}
@@ -85,7 +85,7 @@ function Direction({
         />
       </div>
       <span className="text-xs text-muted-foreground tabular-nums">
-        {utilPercent === null ? "—" : `${formatPercent(utilPercent)} of link`}
+        {utilPercent === null ? "n/a" : `${formatPercent(utilPercent)} of link`}
         {bps === null ? "" : ` · ${formatBytes(bps / 8)}/s`}
       </span>
     </div>

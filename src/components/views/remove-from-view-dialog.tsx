@@ -85,7 +85,7 @@ export function RemoveFromViewDialog({
         <DialogHeader>
           <DialogTitle>Remove from {view.name}</DialogTitle>
           <DialogDescription>
-            The machines stay registered and keep being polled — only this
+            The machines stay registered and keep being polled. Only this
             view&apos;s membership changes.
           </DialogDescription>
         </DialogHeader>
@@ -131,7 +131,7 @@ export function RemoveFromViewDialog({
                 ))}
               </ToggleGroup>
               <FieldDescription>
-                Add them back at any time — views are just saved lists of MACs.
+                Add them back at any time. Views are just saved lists of MACs.
               </FieldDescription>
             </Field>
             {error ? <FieldError>{error}</FieldError> : null}

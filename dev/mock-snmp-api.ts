@@ -32,6 +32,29 @@ interface MachineRow {
   enabled: boolean
   /** Registered with a client-supplied MAC, outside the OpenStack fleet. */
   external: boolean
+  /** The SNMP profile polls authenticate with. Null means it is not polled. */
+  credential_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * A credential as the API returns it — deliberately without the secret, which
+ * the real backend encrypts on the way in and never reads back. The mock keeps
+ * the plaintext in a separate map for the same reason: nothing that serialises
+ * a credential can reach it by accident.
+ */
+interface CredentialRow {
+  id: string
+  name: string
+  description: string | null
+  snmp_version: "2c" | "3"
+  username: string | null
+  security_level: string | null
+  auth_protocol: string | null
+  priv_protocol: string | null
+  secret_version: number
+  fingerprint: string
   created_at: string
   updated_at: string
 }
@@ -123,6 +146,131 @@ const POLL_INTERVAL_SECONDS = 5
 
 const now = () => new Date().toISOString()
 
+const FLEET_V3_ID = "c0ffee00-0001-4c8e-9a63-9a1f00000001"
+const LEGACY_V2C_ID = "c0ffee00-0002-4c8e-9a63-9a1f00000002"
+
+const credentials: CredentialRow[] = [
+  {
+    id: FLEET_V3_ID,
+    name: "fleet-v3-authpriv",
+    description: "SNMPv3 USM identity the OpenStack fleet answers to",
+    snmp_version: "3",
+    username: "snmpmonitor",
+    security_level: "authPriv",
+    auth_protocol: "SHA256",
+    priv_protocol: "AES128",
+    secret_version: 1,
+    fingerprint: "sha256:5f2c…a11e",
+    created_at: new Date(Date.now() - 604_800_000).toISOString(),
+    updated_at: now(),
+  },
+  {
+    id: LEGACY_V2C_ID,
+    name: "lab-v2c",
+    description: "Community string for the bench boxes that predate v3",
+    snmp_version: "2c",
+    username: null,
+    security_level: null,
+    auth_protocol: null,
+    priv_protocol: null,
+    secret_version: 1,
+    fingerprint: "sha256:9b40…7cd2",
+    created_at: new Date(Date.now() - 259_200_000).toISOString(),
+    updated_at: now(),
+  },
+]
+
+/** Plaintext secrets, kept apart from anything that gets serialised. */
+const credentialSecrets = new Map<string, Record<string, string>>([
+  [
+    FLEET_V3_ID,
+    { auth_passphrase: "monitor-auth", priv_passphrase: "monitor-priv" },
+  ],
+  [LEGACY_V2C_ID, { community: "public" }],
+])
+
+const SECRET_FIELDS = ["community", "auth_passphrase", "priv_passphrase"]
+
+const WEAK_CHOICES = ["MD5", "DES", "noAuthNoPriv"]
+
+const text = (body: Record<string, unknown>, key: string): string | null =>
+  typeof body[key] === "string" && body[key] ? body[key] : null
+
+const hasSecret = (body: Record<string, unknown>): boolean =>
+  SECRET_FIELDS.some((field) => text(body, field) !== null)
+
+const mintFingerprint = (): string =>
+  `sha256:${randomUUID().replaceAll("-", "").slice(0, 4)}…${randomUUID().slice(0, 4)}`
+
+function storeSecret(id: string, body: Record<string, unknown>) {
+  const secret: Record<string, string> = {}
+  for (const field of SECRET_FIELDS) {
+    const value = text(body, field)
+    if (value) secret[field] = value
+  }
+  credentialSecrets.set(id, secret)
+}
+
+/**
+ * The backend's own validation, restated: a USM shape half-filled in is a row
+ * no validator could repair, so the version and the security level decide
+ * which fields have to be there together.
+ */
+function credentialProblem(body: Record<string, unknown>): string | null {
+  const version = text(body, "snmp_version")
+  if (version !== "2c" && version !== "3") {
+    return "snmp_version: must be 2c or 3"
+  }
+  if (!text(body, "name")) return "name: required"
+
+  if (version === "2c") {
+    return text(body, "community") ? null : "community: required for v2c"
+  }
+
+  if (!text(body, "username")) return "username: required for v3"
+  const level = text(body, "security_level")
+  if (!level) return "security_level: required for v3"
+
+  const allowWeak = body.allow_weak === true
+  const chosen = [level, text(body, "auth_protocol"), text(body, "priv_protocol")]
+  const weak = chosen.find(
+    (value) => value !== null && WEAK_CHOICES.includes(value)
+  )
+  if (weak && !allowWeak) return `${weak} is refused unless allow_weak is set`
+
+  if (level === "authNoPriv" || level === "authPriv") {
+    if (!text(body, "auth_protocol")) return "auth_protocol: required"
+    if (!text(body, "auth_passphrase")) return "auth_passphrase: required"
+  }
+  if (level === "authPriv") {
+    if (!text(body, "priv_protocol")) return "priv_protocol: required"
+    if (!text(body, "priv_passphrase")) return "priv_passphrase: required"
+  }
+  return null
+}
+
+/** A validated body as the row the API returns — without the secret. */
+function credentialFrom(
+  body: Record<string, unknown>,
+  id: string
+): CredentialRow {
+  const version = text(body, "snmp_version") === "2c" ? "2c" : "3"
+  return {
+    id,
+    name: text(body, "name") ?? "",
+    description: text(body, "description"),
+    snmp_version: version,
+    username: version === "3" ? text(body, "username") : null,
+    security_level: version === "3" ? text(body, "security_level") : null,
+    auth_protocol: version === "3" ? text(body, "auth_protocol") : null,
+    priv_protocol: version === "3" ? text(body, "priv_protocol") : null,
+    secret_version: 1,
+    fingerprint: mintFingerprint(),
+    created_at: now(),
+    updated_at: now(),
+  }
+}
+
 const machines: MachineRow[] = [
   {
     mac: "fa:16:3e:00:00:01",
@@ -130,6 +278,7 @@ const machines: MachineRow[] = [
     label: "core-worker-01",
     enabled: true,
     external: false,
+    credential_id: FLEET_V3_ID,
     created_at: new Date(Date.now() - 86_400_000).toISOString(),
     updated_at: now(),
   },
@@ -139,6 +288,7 @@ const machines: MachineRow[] = [
     label: null,
     enabled: true,
     external: false,
+    credential_id: FLEET_V3_ID,
     created_at: new Date(Date.now() - 43_200_000).toISOString(),
     updated_at: now(),
   },
@@ -148,6 +298,9 @@ const machines: MachineRow[] = [
     label: "edge-proxy",
     enabled: true,
     external: false,
+    // Registered but never bound, so the "no credential" state — a machine the
+    // collector skips entirely — is visible without provoking it.
+    credential_id: null,
     created_at: new Date(Date.now() - 7_200_000).toISOString(),
     updated_at: now(),
   },
@@ -159,6 +312,7 @@ const machines: MachineRow[] = [
     label: "lab-bench-01",
     enabled: true,
     external: true,
+    credential_id: LEGACY_V2C_ID,
     created_at: new Date(Date.now() - 21_600_000).toISOString(),
     updated_at: now(),
   },
@@ -198,9 +352,13 @@ const faults = new Map<string, Fault>()
 
 const faultOf = (mac: string): Fault => faults.get(mac) ?? "none"
 
-/** A machine whose poll fails contributes no samples at all. */
+/**
+ * A machine whose poll fails contributes no samples at all — and neither does
+ * one with no credential bound, which is not polled in the first place.
+ */
 const pollSucceeds = (mac: string): boolean =>
-  FAULT_ERRORS[faultOf(mac)] === null
+  FAULT_ERRORS[faultOf(mac)] === null &&
+  Boolean(machines.find((machine) => machine.mac === mac)?.credential_id)
 
 const knownToOpenStack = (mac: string): boolean =>
   faultOf(mac) !== "openstack_deleted"
@@ -258,6 +416,9 @@ function runTick() {
     const stat = statFor(machine)
     stat.ipv4 = machine.ipv4
     if (!machine.enabled) continue
+    // Nothing to authenticate with means the machine is not polled at all —
+    // not polled and failing, which is a different thing and a different dot.
+    if (!machine.credential_id) continue
     const error = FAULT_ERRORS[faultOf(machine.mac)]
     if (error) {
       stat.fail_count += 1
@@ -540,6 +701,8 @@ const ALL_SCOPES = [
   "users:write",
   "roles:read",
   "roles:write",
+  "credentials:read",
+  "credentials:write",
 ]
 
 const ROLE_SCOPES: Record<string, string[]> = {
@@ -551,7 +714,11 @@ const ROLE_SCOPES: Record<string, string[]> = {
     "metrics:write",
     "admin:read",
     "admin:write",
+    "credentials:read",
+    "credentials:write",
   ],
+  // Reading a credential profile never reveals a secret, but it does reveal
+  // the fleet's USM identities, so a viewer is not given even that.
   viewer: ["machines:read", "metrics:read"],
 }
 
@@ -677,9 +844,16 @@ function requiredScope(path: string, method: string): string | null {
     return method === "GET" ? "admin:read" : "admin:write"
   }
   if (path === "/auth/stream-ticket") return "metrics:read"
+  if (path.startsWith("/snmp-credentials")) {
+    return method === "GET" ? "credentials:read" : "credentials:write"
+  }
   if (path.startsWith("/machines")) {
     if (path.endsWith("/metrics/stream")) return "metrics:read"
     if (path.endsWith("/metrics")) return "metrics:write"
+    // Binding a shared credential to a machine is what would aim the next
+    // authenticated poll somewhere new, so it costs the credential scope
+    // rather than the machine one.
+    if (path.includes("/snmp-credential")) return "credentials:write"
     return method === "GET" ? "machines:read" : "machines:write"
   }
   if (path.startsWith("/metrics")) {
@@ -896,6 +1070,9 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
               label,
               enabled: true,
               external: !known,
+              // Registration never binds: the credential is a second call, so
+              // a machine can exist before anyone knows how to poll it.
+              credential_id: null,
               created_at: now(),
               updated_at: now(),
             }
@@ -948,6 +1125,129 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
               res.writeHead(204)
               return res.end()
             }
+          }
+
+          // --- snmp credentials -----------------------------------------
+          if (path === "/snmp-credentials" && method === "GET") {
+            return json(res, 200, credentials)
+          }
+
+          if (path === "/snmp-credentials" && method === "POST") {
+            const body = await readBody(req)
+            const invalid = credentialProblem(body)
+            if (invalid) return json(res, 422, { detail: invalid })
+            const row = credentialFrom(body, randomUUID())
+            credentials.push(row)
+            storeSecret(row.id, body)
+            return json(res, 201, row)
+          }
+
+          const credentialMatch = /^\/snmp-credentials\/([^/]+)$/.exec(path)
+          if (credentialMatch) {
+            const id = decodeURIComponent(credentialMatch[1])
+            const index = credentials.findIndex((entry) => entry.id === id)
+            if (index === -1) {
+              return json(res, 404, { detail: `Credential ${id} not found` })
+            }
+            if (method === "GET") return json(res, 200, credentials[index])
+            if (method === "PATCH") {
+              const body = await readBody(req)
+              const invalid = credentialProblem(body)
+              if (invalid) return json(res, 422, { detail: invalid })
+              const previous = credentials[index]
+              const row = credentialFrom(body, id)
+              // Any secret in the body replaces the stored one wholesale, and
+              // the version is what makes that visible to a client.
+              const rotated = hasSecret(body)
+              credentials[index] = {
+                ...row,
+                secret_version: previous.secret_version + (rotated ? 1 : 0),
+                fingerprint: rotated ? mintFingerprint() : previous.fingerprint,
+                created_at: previous.created_at,
+              }
+              if (rotated) storeSecret(id, body)
+              return json(res, 200, credentials[index])
+            }
+            if (method === "DELETE") {
+              // The FK is RESTRICT on the real backend; checking here is what
+              // turns that into a 409 naming the machines rather than a 500.
+              const bound = machines.filter(
+                (machine) => machine.credential_id === id
+              )
+              if (bound.length > 0) {
+                return json(res, 409, {
+                  detail: `Still bound to ${bound.map((machine) => machine.mac).join(", ")}`,
+                })
+              }
+              credentials.splice(index, 1)
+              credentialSecrets.delete(id)
+              res.writeHead(204)
+              return res.end()
+            }
+          }
+
+          const bindMatch = /^\/machines\/([^/]+)\/snmp-credential$/.exec(path)
+          if (bindMatch) {
+            const mac = decodeURIComponent(bindMatch[1])
+            const machine = machines.find((entry) => entry.mac === mac)
+            if (!machine) {
+              return json(res, 404, { detail: `Machine ${mac} not found` })
+            }
+            if (method === "PUT") {
+              const body = await readBody(req)
+              const id =
+                typeof body.credential_id === "string"
+                  ? body.credential_id
+                  : null
+              if (!id || !credentials.some((entry) => entry.id === id)) {
+                return json(res, 422, {
+                  detail: `No such credential: ${id ?? "(missing)"}`,
+                })
+              }
+              machine.credential_id = id
+              machine.updated_at = now()
+              return json(res, 200, machineResponse(machine))
+            }
+            if (method === "DELETE") {
+              machine.credential_id = null
+              machine.updated_at = now()
+              res.writeHead(204)
+              return res.end()
+            }
+          }
+
+          const testMatch = /^\/machines\/([^/]+)\/snmp-credential\/test$/.exec(
+            path
+          )
+          if (testMatch && method === "POST") {
+            const mac = decodeURIComponent(testMatch[1])
+            const machine = machines.find((entry) => entry.mac === mac)
+            if (!machine) {
+              return json(res, 404, { detail: `Machine ${mac} not found` })
+            }
+            const body = await readBody(req)
+            const inline = body.credential as Record<string, unknown> | null
+            if (inline) {
+              const invalid = credentialProblem(inline)
+              if (invalid) return json(res, 422, { detail: invalid })
+            }
+            if (!inline && !machine.credential_id) {
+              return json(res, 422, {
+                detail: `${mac} has no credential bound, and none was supplied`,
+              })
+            }
+            // The address is the machine's own and comes from nowhere else —
+            // the endpoint takes none, deliberately. Whether the poll answers
+            // is the fault injector's business, exactly as a real one is.
+            const error = FAULT_ERRORS[faultOf(mac)]
+            return json(res, 200, {
+              ok: error === null,
+              ipv4: machine.ipv4,
+              credential_id: inline ? null : machine.credential_id,
+              duration_seconds: round(0.1 + Math.random() * 0.6),
+              detail: error,
+              simulated: true,
+            })
           }
 
           const machineMetricsMatch = /^\/machines\/([^/]+)\/metrics$/.exec(

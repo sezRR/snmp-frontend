@@ -77,7 +77,7 @@ export function RadialMetricCard({
                         y={viewBox.cy}
                         className="fill-foreground text-2xl font-bold"
                       >
-                        {value === null ? "—" : formatPercent(value)}
+                        {value === null ? "n/a" : formatPercent(value)}
                       </tspan>
                     </text>
                   )

@@ -74,7 +74,7 @@ export function ViewDialog({
           <DialogTitle>{view ? "Edit view" : "New view"}</DialogTitle>
           <DialogDescription>
             A view is a saved subset of the fleet. It is stored in this browser
-            only — the backend never sees it.
+            only, and the backend never sees it.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>

@@ -125,8 +125,8 @@ export function ChangePasswordDialog({
                 onChange={(event) => setNext(event.target.value)}
               />
               <FieldDescription>
-                Whatever the backend's policy allows — it is the one that
-                enforces it.
+                Whatever the backend's policy allows. It is the one that enforces
+                it.
               </FieldDescription>
             </Field>
             <Field>

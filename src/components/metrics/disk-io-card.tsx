@@ -88,7 +88,7 @@ function rateOf(disk: DiskReading): number {
 }
 
 const formatRate = (value: number | null): string =>
-  value === null ? "—" : formatBytesRate(value)
+  value === null ? "n/a" : formatBytesRate(value)
 
 interface DirectionProps {
   label: string
@@ -110,7 +110,7 @@ function Direction({ label, icon, bytesPerSecond, iops }: DirectionProps) {
         </span>
       </div>
       <span className="text-right text-xs text-muted-foreground tabular-nums">
-        {iops === null ? "—" : formatIops(iops)}
+        {iops === null ? "n/a" : formatIops(iops)}
       </span>
     </div>
   )

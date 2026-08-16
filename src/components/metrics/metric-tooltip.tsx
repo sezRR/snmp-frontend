@@ -27,7 +27,7 @@ export function metricTooltipFormatter(
         {labels[String(name)] ?? String(name)}
       </span>
       <span className="ml-auto font-mono font-medium tabular-nums">
-        {typeof value === "number" ? valueFormatter(value) : "—"}
+        {typeof value === "number" ? valueFormatter(value) : "n/a"}
       </span>
     </div>
   )

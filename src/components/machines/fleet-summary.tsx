@@ -1,5 +1,4 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { useClock } from "@/hooks/use-clock"
 import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
 import type { Machine, ServerInfo } from "@/lib/api/types"
 import { formatBytes, formatPercent, formatUsage } from "@/lib/format"
@@ -13,8 +12,6 @@ interface Tile {
   value: string
   detail?: string
 }
-
-const REPORTING_WINDOW_MS = 120_000
 
 function Stat({ label, value, detail }: Tile) {
   return (
@@ -43,7 +40,6 @@ export function FleetSummary({
 }) {
   const { data: latest } = useQuery(latestMetricsQueryOptions())
   const { byMac } = useFleetLiveMetrics()
-  const now = useClock()
 
   const latestByMac = samplesByMac(latest ?? [])
   const snapshots = machines
@@ -53,9 +49,10 @@ export function FleetSummary({
     })
     .filter((snapshot) => snapshot !== null)
 
-  const reporting = snapshots.filter(
-    (snapshot) => now - Date.parse(snapshot.ts) <= REPORTING_WINDOW_MS
-  ).length
+  // Every machine the collector has ever produced a sample for. Ageing those
+  // samples against the browser's clock is what this used to do, and on a fleet
+  // where NTP is optional it counted clock drift rather than silence.
+  const reporting = snapshots.length
 
   const cpuValues = snapshots
     .map((snapshot) => snapshot.cpuPercent)
@@ -96,16 +93,16 @@ export function FleetSummary({
       <Stat
         label="Reporting"
         value={`${reporting} / ${machines.length}`}
-        detail="samples in the last 2 min"
+        detail="machines with samples"
       />
       <Stat
         label="Fleet CPU"
-        value={avgCpu === null ? "—" : formatPercent(avgCpu)}
+        value={avgCpu === null ? "n/a" : formatPercent(avgCpu)}
         detail={`average of ${cpuValues.length} machines`}
       />
       <Stat
         label="Fleet RAM"
-        value={ramTotal === 0 ? "—" : formatPercent((ramUsed / ramTotal) * 100)}
+        value={ramTotal === 0 ? "n/a" : formatPercent((ramUsed / ramTotal) * 100)}
         detail={
           ramTotal === 0
             ? undefined

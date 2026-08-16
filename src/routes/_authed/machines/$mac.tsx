@@ -19,7 +19,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useClock } from "@/hooks/use-clock"
 import { useMachineLiveMetrics } from "@/hooks/use-live-metrics"
 import {
   formatBps,
@@ -113,9 +112,9 @@ function MachineDetailPage() {
   const sample = liveSample ?? fallbackSample
   const snapshot = sample ? normalizeSample(sample, machine) : null
 
-  // Same dot as the grid and the sidebar: sample freshness, unless the
-  // collector says this machine's last poll failed outright.
-  const now = useClock()
+  // Same dot as the grid and the sidebar: whether the collector's last poll of
+  // this machine succeeded, which is the one party to the exchange that can
+  // answer without comparing clocks.
   const failing = collectorMachineHealth(collector)[mac]?.failing
 
   // The live card is exactly that: it starts empty on arrival and fills from
@@ -155,9 +154,8 @@ function MachineDetailPage() {
           className="size-2.5"
           health={machineHealth({
             enabled: machine.enabled,
-            latestTs: sample?.ts,
+            hasSample: sample !== undefined,
             failing,
-            now,
           })}
         />
         <h1 className="text-lg font-semibold">{machineName(machine)}</h1>
@@ -171,6 +169,9 @@ function MachineDetailPage() {
         ) : !machine.openstack_found ? (
           <Badge variant="destructive">not in OpenStack</Badge>
         ) : null}
+        {machine.credential_id ? null : (
+          <Badge variant="destructive">no credential</Badge>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <LiveStatusIndicator status={status} />
           <MachineActions machine={machine} />
@@ -240,7 +241,7 @@ function MachineDetailPage() {
             <CardDescription>
               {machine.external
                 ? `Registered as external: ${machine.ipv4} is outside the fleet, so its MAC and address are yours to set and the collector never moves them.`
-                : `No record of ${machine.ipv4} in the lookup — deleted or moved in OpenStack since registration.`}{" "}
+                : `No record of ${machine.ipv4} in the lookup. It was deleted or moved in OpenStack since registration.`}{" "}
               Everything below comes from the agent, so any limit it does not
               report is shown as unknown.
             </CardDescription>

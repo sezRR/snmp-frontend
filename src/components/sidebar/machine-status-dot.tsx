@@ -1,43 +1,44 @@
 import { cn } from "@/lib/utils"
 
+export type MachineHealth = "reporting" | "unsampled" | "failing" | "disabled"
+
 /**
- * How fresh a sample has to be before a machine counts as reporting. The
- * collector polls every 5 seconds, so this is several missed rounds — enough
- * slack for a slow round or a reconnecting stream, short enough that a machine
- * that has genuinely gone quiet does not keep a green dot for minutes.
+ * Whether a machine is answering, judged without reference to any clock.
+ *
+ * This used to age the newest sample against the browser's clock and call
+ * anything older than half a minute stale. On a fleet where NTP is optional
+ * that measured the disagreement between two clocks rather than the health of a
+ * machine: a guest a few minutes fast stayed green forever, one a few minutes
+ * slow went amber while answering every round. The collector already knows
+ * whether the last poll succeeded and says so per machine, which is the same
+ * question answered by the side that actually asked it.
  */
-const STALE_AFTER_MS = 30_000
-
-export type MachineHealth = "reporting" | "stale" | "failing" | "disabled"
-
 export function machineHealth({
   enabled,
-  latestTs,
+  hasSample,
   failing,
-  now,
 }: {
   enabled: boolean
-  latestTs: string | null | undefined
+  /** Whether any sample has been seen for this machine at all. */
+  hasSample: boolean
+  /** From the collector's own per-machine counters. */
   failing?: boolean
-  /** From useClock(), so freshness is judged against one shared instant. */
-  now: number
 }): MachineHealth {
   if (!enabled) return "disabled"
   if (failing) return "failing"
-  if (!latestTs) return "stale"
-  return now - Date.parse(latestTs) <= STALE_AFTER_MS ? "reporting" : "stale"
+  return hasSample ? "reporting" : "unsampled"
 }
 
 const healthClass: Record<MachineHealth, string> = {
   reporting: "bg-chart-2",
-  stale: "bg-chart-4",
+  unsampled: "bg-chart-4",
   failing: "bg-destructive",
   disabled: "bg-muted-foreground/40",
 }
 
 const healthLabel: Record<MachineHealth, string> = {
   reporting: "Reporting",
-  stale: "No recent samples",
+  unsampled: "No samples yet",
   failing: "Collector failing",
   disabled: "Polling disabled",
 }

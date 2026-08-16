@@ -11,7 +11,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { useClock } from "@/hooks/use-clock"
 import { useFleetLiveMetrics } from "@/hooks/use-live-metrics"
 import { shortMac } from "@/lib/format"
 import {
@@ -32,7 +31,6 @@ export function RecentMachinesNav() {
   const { data: latest } = useQuery(latestMetricsQueryOptions())
   const { data: collector } = useCollectorStatusQuery()
   const { byMac } = useFleetLiveMetrics()
-  const now = useClock()
   const closeOnNavigate = useCloseOnNavigate()
 
   const health = collectorMachineHealth(collector)
@@ -68,9 +66,8 @@ export function RecentMachinesNav() {
                     className="ml-1"
                     health={machineHealth({
                       enabled: machine.enabled,
-                      latestTs: sample?.ts,
+                      hasSample: sample !== undefined,
                       failing: health[machine.mac]?.failing,
-                      now,
                     })}
                   />
                   <span className="flex flex-1 items-baseline gap-2 overflow-hidden">

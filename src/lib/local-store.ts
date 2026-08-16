@@ -1,7 +1,7 @@
 import * as React from "react"
 import type { z } from "zod"
 
-// Client-owned, disposable state (recently opened machines, saved views). It
+// Client-owned, disposable state (saved views, UI preferences). It
 // never reaches the backend, so it lives in localStorage and is validated on
 // read — a hand-edited or stale entry falls back to the default instead of
 // crashing the sidebar.

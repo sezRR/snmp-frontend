@@ -90,7 +90,7 @@ function ViewPage() {
   )
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="flex flex-col">
           <h1 className="text-lg font-semibold">{view.name}</h1>

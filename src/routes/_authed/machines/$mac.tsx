@@ -44,11 +44,9 @@ import {
   recentSamplesQueryOptions,
   samplesByMac,
 } from "@/lib/queries/metrics"
-import { rememberMachine } from "@/lib/recent-machines"
 import { TIME_RANGES, type TimeRangeKey, timeRangeKeys } from "@/lib/time-range"
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import * as React from "react"
 import { z } from "zod"
 
 /** Points kept in the throughput sparkline on the bandwidth card. */
@@ -102,11 +100,6 @@ function MachineDetailPage() {
     ...recentSamplesQueryOptions(mac),
     enabled: !statsHaveNet || !statsHaveDiskIo,
   })
-
-  // Visiting a machine is what makes it "recent" in the sidebar.
-  React.useEffect(() => {
-    rememberMachine(mac)
-  }, [mac])
 
   const fallbackSample = samplesByMac(latest ?? [])[mac]
   const sample = liveSample ?? fallbackSample

@@ -24,7 +24,6 @@ import {
   machinesQueryOptions,
   useDeleteMachinesMutation,
 } from "@/lib/queries/machines"
-import { forgetMachine } from "@/lib/recent-machines"
 import { removeMachineFromViews } from "@/lib/views"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate, useParams } from "@tanstack/react-router"
@@ -78,7 +77,6 @@ export function DeregisterMachinesDialog({
     remove.mutate(picked, {
       onSuccess: ({ removed, failed }) => {
         for (const mac of removed) {
-          forgetMachine(mac)
           removeMachineFromViews(mac)
         }
         if (removed.length > 0) {

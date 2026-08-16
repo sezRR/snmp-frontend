@@ -7,29 +7,45 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { ViewDialog } from "@/components/views/view-dialog"
+import { cn } from "@/lib/utils"
 import { type View, deleteView, useViews } from "@/lib/views"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
-import { LayoutGrid, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
+import {
+  ChevronRight,
+  LayoutGrid,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
+interface ViewsNavProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
 /** Client-side saved subsets of the fleet, kept in localStorage. */
-export function ViewsNav() {
+export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
   const views = useViews()
   const navigate = useNavigate()
   const { viewId: openViewId } = useParams({ strict: false })
   const [editing, setEditing] = React.useState<View | undefined>(undefined)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const closeOnNavigate = useCloseOnNavigate()
+  const { isMobile, setOpen, state } = useSidebar()
 
   const openCreate = () => {
     setEditing(undefined)
@@ -42,77 +58,109 @@ export function ViewsNav() {
     if (openViewId === view.id) void navigate({ to: "/" })
   }
 
+  const handleToggle = () => {
+    if (!isMobile && state === "collapsed") {
+      setOpen(true)
+      onOpenChange(true)
+      return
+    }
+    onOpenChange(!open)
+  }
+
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Views</SidebarGroupLabel>
-      <SidebarGroupAction title="New view" onClick={openCreate}>
-        <Plus />
-        <span className="sr-only">New view</span>
-      </SidebarGroupAction>
       <SidebarGroupContent>
         <SidebarMenu>
-          {views.length === 0 ? (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="New view"
-                className="text-muted-foreground"
-                onClick={openCreate}
-              >
-                <Plus />
-                <span>New view</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ) : (
-            views.map((view) => (
-              <SidebarMenuItem key={view.id}>
-                <SidebarMenuButton
-                  tooltip={view.name}
-                  isActive={openViewId === view.id}
-                  render={
-                    <Link
-                      to="/views/$viewId"
-                      params={{ viewId: view.id }}
-                      onClick={closeOnNavigate}
-                    />
-                  }
-                >
-                  <LayoutGrid />
-                  <span className="flex-1 truncate">{view.name}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {view.macs.length}
-                  </span>
-                </SidebarMenuButton>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <SidebarMenuAction showOnHover>
-                        <MoreHorizontal />
-                        <span className="sr-only">View actions</span>
-                      </SidebarMenuAction>
-                    }
-                  />
-                  <DropdownMenuContent align="start" side="right">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setEditing(view)
-                        setDialogOpen(true)
-                      }}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Views"
+              isActive={openViewId !== undefined}
+              aria-expanded={open}
+              aria-controls="sidebar-views"
+              onClick={handleToggle}
+            >
+              <LayoutGrid />
+              <span>Views</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto transition-transform duration-200",
+                  open && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+            <SidebarMenuAction
+              title="New view"
+              aria-label="New view"
+              onClick={openCreate}
+            >
+              <Plus />
+            </SidebarMenuAction>
+
+            {open ? (
+              <SidebarMenuSub id="sidebar-views">
+                {views.length === 0 ? (
+                  <SidebarMenuSubItem className="px-8 py-1.5 text-xs text-muted-foreground">
+                    No saved views
+                  </SidebarMenuSubItem>
+                ) : (
+                  views.map((view) => (
+                    <SidebarMenuSubItem
+                      key={view.id}
+                      className="group/menu-item relative"
                     >
-                      <Pencil />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => handleDelete(view)}
-                    >
-                      <Trash2 />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </SidebarMenuItem>
-            ))
-          )}
+                      <SidebarMenuSubButton
+                        title={view.name}
+                        className="pr-7 pl-8"
+                        isActive={openViewId === view.id}
+                        render={
+                          <Link
+                            to="/views/$viewId"
+                            params={{ viewId: view.id }}
+                            onClick={closeOnNavigate}
+                          />
+                        }
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className="truncate">{view.name}</span>
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {view.macs.length}
+                          </span>
+                        </div>
+                      </SidebarMenuSubButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <SidebarMenuAction showOnHover>
+                              <MoreHorizontal />
+                              <span className="sr-only">View actions</span>
+                            </SidebarMenuAction>
+                          }
+                        />
+                        <DropdownMenuContent align="start" side="right">
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setEditing(view)
+                              setDialogOpen(true)
+                            }}
+                          >
+                            <Pencil />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => handleDelete(view)}
+                          >
+                            <Trash2 />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuSubItem>
+                  ))
+                )}
+              </SidebarMenuSub>
+            ) : null}
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroupContent>
       <ViewDialog

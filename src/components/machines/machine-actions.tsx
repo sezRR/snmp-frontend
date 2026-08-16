@@ -35,7 +35,6 @@ import {
   useUpdateMachineMutation,
 } from "@/lib/queries/machines"
 import { usePurgeMachineMetricsMutation } from "@/lib/queries/metrics"
-import { forgetMachine } from "@/lib/recent-machines"
 import { removeMachineFromViews, removeMachinesFromView } from "@/lib/views"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import {
@@ -157,7 +156,6 @@ export function MachineActions({ machine }: MachineActionsProps) {
   const handleDelete = () => {
     remove.mutate(machine.mac, {
       onSuccess: () => {
-        forgetMachine(machine.mac)
         // The machine is gone from the backend; leaving it saved in a view
         // would keep a reference nothing can ever resolve.
         removeMachineFromViews(machine.mac)

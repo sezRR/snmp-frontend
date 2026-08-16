@@ -1,5 +1,10 @@
 import { CollectorHealthFooter } from "@/components/sidebar/collector-health"
-import { RecentMachinesNav } from "@/components/sidebar/recent-machines-nav"
+import { MachinesNav } from "@/components/sidebar/machines-nav"
+import {
+  type SidebarSection,
+  setSidebarSection,
+  useSidebarSections,
+} from "@/components/sidebar/sidebar-sections"
 import { useCloseOnNavigate } from "@/components/sidebar/use-close-on-navigate"
 import { ViewsNav } from "@/components/sidebar/views-nav"
 import {
@@ -14,22 +19,56 @@ import {
 } from "@/components/ui/sidebar"
 import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { Link, useLocation } from "@tanstack/react-router"
-import { Activity, Server, Wrench } from "lucide-react"
+import { Activity, Wrench } from "lucide-react"
+import * as React from "react"
 
 const navItems = [
-  { title: "Machines", to: "/machines", icon: Server, scope: null },
   { title: "Admin", to: "/admin", icon: Wrench, scope: SCOPES.adminRead },
 ] as const
+
+interface RouteSectionOverrides {
+  pathname: string
+  values: Partial<Record<SidebarSection, boolean>>
+}
 
 export function AppSidebar() {
   const { pathname } = useLocation()
   const closeOnNavigate = useCloseOnNavigate()
+  const sections = useSidebarSections()
+  const [routeOverrides, setRouteOverrides] =
+    React.useState<RouteSectionOverrides>(() => ({ pathname, values: {} }))
   // The admin page is nothing but collector and cache internals, so without
   // the scope to read them there is no page to navigate to.
   const canReadAdmin = useHasScope(SCOPES.adminRead)
   const visibleItems = navItems.filter(
     (item) => item.scope === null || canReadAdmin
   )
+
+  if (routeOverrides.pathname !== pathname) {
+    setRouteOverrides({ pathname, values: {} })
+  }
+
+  const sectionOpen = (section: SidebarSection) => {
+    const override =
+      routeOverrides.pathname === pathname
+        ? routeOverrides.values[section]
+        : undefined
+    if (override !== undefined) return override
+
+    const routeIsActive = pathname.startsWith(`/${section}`)
+    return routeIsActive || sections[section]
+  }
+
+  const handleSectionOpenChange = (section: SidebarSection, open: boolean) => {
+    setRouteOverrides((current) => ({
+      pathname,
+      values: {
+        ...(current.pathname === pathname ? current.values : {}),
+        [section]: open,
+      },
+    }))
+    setSidebarSection(section, open)
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -54,6 +93,14 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
+        <MachinesNav
+          open={sectionOpen("machines")}
+          onOpenChange={(open) => handleSectionOpenChange("machines", open)}
+        />
+        <ViewsNav
+          open={sectionOpen("views")}
+          onOpenChange={(open) => handleSectionOpenChange("views", open)}
+        />
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -75,8 +122,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <RecentMachinesNav />
-        <ViewsNav />
       </SidebarContent>
       <CollectorHealthFooter />
     </Sidebar>

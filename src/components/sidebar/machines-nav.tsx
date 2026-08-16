@@ -1,3 +1,4 @@
+import { MachineActions } from "@/components/machines/machine-actions"
 import {
   MachineStatusDot,
   machineHealth,
@@ -107,15 +108,15 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
             {open ? (
               <SidebarMenuSub id="sidebar-machines">
                 {isPending ? (
-                  <SidebarMenuSubItem className="px-8 py-1.5 text-xs text-muted-foreground">
+                  <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
                     Loading machines...
                   </SidebarMenuSubItem>
                 ) : isError ? (
-                  <SidebarMenuSubItem className="px-8 py-1.5 text-xs text-destructive">
+                  <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-destructive">
                     Machines unavailable
                   </SidebarMenuSubItem>
                 ) : visible.length === 0 ? (
-                  <SidebarMenuSubItem className="px-8 py-1.5 text-xs text-muted-foreground">
+                  <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
                     No machines registered
                   </SidebarMenuSubItem>
                 ) : (
@@ -123,10 +124,13 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                     const sample =
                       byMac[machine.mac] ?? latestByMac[machine.mac]
                     return (
-                      <SidebarMenuSubItem key={machine.mac}>
+                      <SidebarMenuSubItem
+                        key={machine.mac}
+                        className="group/menu-item relative"
+                      >
                         <SidebarMenuSubButton
                           title={`${machineName(machine)}\nIP: ${machine.ipv4}\nMAC: ${machine.mac}`}
-                          className="pl-8"
+                          className="pl-3"
                           isActive={openMac === machine.mac}
                           render={
                             <Link
@@ -145,6 +149,17 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                           />
                           <span>{machineName(machine)}</span>
                         </SidebarMenuSubButton>
+                        <MachineActions
+                          machine={machine}
+                          includeViewAction={false}
+                          onDeregistered={closeOnNavigate}
+                          trigger={
+                            <SidebarMenuAction showOnHover>
+                              <MoreHorizontal />
+                              <span className="sr-only">Machine actions</span>
+                            </SidebarMenuAction>
+                          }
+                        />
                       </SidebarMenuSubItem>
                     )
                   })
@@ -153,7 +168,7 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                 {remaining > 0 ? (
                   <SidebarMenuSubItem>
                     <SidebarMenuSubButton
-                      className="pl-8"
+                      className="pl-3"
                       render={<Link to="/machines" onClick={closeOnNavigate} />}
                     >
                       <MoreHorizontal />

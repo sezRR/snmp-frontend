@@ -99,7 +99,7 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
             {open ? (
               <SidebarMenuSub id="sidebar-views">
                 {views.length === 0 ? (
-                  <SidebarMenuSubItem className="px-8 py-1.5 text-xs text-muted-foreground">
+                  <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
                     No saved views
                   </SidebarMenuSubItem>
                 ) : (
@@ -110,7 +110,7 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
                     >
                       <SidebarMenuSubButton
                         title={view.name}
-                        className="pr-7 pl-8"
+                        className="pl-3"
                         isActive={openViewId === view.id}
                         render={
                           <Link

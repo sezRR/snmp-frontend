@@ -5,6 +5,7 @@ import {
   emptyCredentialDraft,
   parseCredentialDraft,
 } from "@/components/machines/snmp-credential-fields"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,6 +33,7 @@ import type {
   MachineCreate,
   ServerInfo,
   SnmpCredential,
+  SnmpCredentialForm,
 } from "@/lib/api/types"
 import { machineCreateSchema } from "@/lib/api/types"
 import { SCOPES, useHasScope } from "@/lib/auth/scopes"
@@ -41,6 +43,8 @@ import {
   useBindCredentialMutation,
   useCreateCredentialMutation,
   useCredentialsQuery,
+  useTestCredentialMutation,
+  useUnbindCredentialMutation,
 } from "@/lib/queries/credentials"
 import {
   machineName,
@@ -50,7 +54,7 @@ import {
 import { cn } from "@/lib/utils"
 import { type View, addMachinesToView } from "@/lib/views"
 import { useQuery } from "@tanstack/react-query"
-import { Check, KeyRound, Plus } from "lucide-react"
+import { Check, CircleAlert, KeyRound, Plus } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -72,12 +76,16 @@ const STEP_LABELS: Record<Step, string> = {
 }
 
 /**
- * How the machines being registered get something to be polled with. There is
- * no "bind it later" option: a machine with nothing bound is registered and
- * then silently skipped by the collector, which looks identical to a machine
- * that is failing. Registration is the moment the answer is known.
+ * How the machines being registered get something to be polled with. Offering
+ * the choice here avoids leaving a successfully registered machine silently
+ * skipped by the collector until someone notices it has no credential.
  */
 type CredentialMode = "existing" | "new"
+
+interface RegistrationOutcome {
+  title: string
+  details: string[]
+}
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
@@ -106,10 +114,12 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const [credentialMode, setCredentialMode] =
     React.useState<CredentialMode>("existing")
   const [credentialId, setCredentialId] = React.useState<string | null>(null)
-  const [draft, setDraft] = React.useState<CredentialDraft>(emptyCredentialDraft)
+  const [draft, setDraft] =
+    React.useState<CredentialDraft>(emptyCredentialDraft)
   const [draftErrors, setDraftErrors] = React.useState<CredentialErrors>({})
 
   const [error, setError] = React.useState<string | null>(null)
+  const [outcome, setOutcome] = React.useState<RegistrationOutcome | null>(null)
 
   const canRegister = useHasScope(SCOPES.machinesWrite)
   // Binding is `credentials:write` whichever profile is bound — repointing a
@@ -120,6 +130,8 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const register = useRegisterAllMachinesMutation()
   const createCredential = useCreateCredentialMutation()
   const bind = useBindCredentialMutation()
+  const unbind = useUnbindCredentialMutation()
+  const testCredential = useTestCredentialMutation()
   const [submitting, setSubmitting] = React.useState(false)
 
   // The picker is a convenience the OpenStack cache provides, and reading it
@@ -179,9 +191,12 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     setDraft(emptyCredentialDraft)
     setDraftErrors({})
     setError(null)
+    setOutcome(null)
     register.reset()
     createCredential.reset()
     bind.reset()
+    unbind.reset()
+    testCredential.reset()
   }
 
   /**
@@ -294,13 +309,16 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     setSubmitting(true)
     setError(null)
     try {
-      // The profile is created before anything is registered: a credential the
-      // backend rejects should leave no half-provisioned machines behind, and
-      // a machine registered without one is not polled at all.
-      let boundId: string | null = null
+      let inlineCredential: SnmpCredentialForm | null = null
+      let savedCredentialId: string | null = null
       if (needsCredentialStep) {
         if (mode === "existing") {
-          boundId = credentialId
+          if (!credentialId) {
+            setError("Pick a saved profile, or create one")
+            setStepIndex(steps.indexOf("credential"))
+            return
+          }
+          savedCredentialId = credentialId
         } else {
           const { data } = parseCredentialDraft(draft)
           if (!data) {
@@ -308,7 +326,7 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
             setStepIndex(steps.indexOf("credential"))
             return
           }
-          boundId = (await createCredential.mutateAsync(data)).id
+          inlineCredential = data
         }
       }
 
@@ -317,16 +335,98 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
           ? await register.mutateAsync(bodies)
           : { registered: [], failed: [] }
 
-      // Bound one at a time because that is the shape of the endpoint. A bind
-      // that fails leaves a registered machine nothing polls it with, which is
-      // worth naming rather than folding into a generic failure.
-      const unbound: string[] = []
-      if (boundId) {
+      const details = failed.map(
+        (failure) => `${failure.ipv4}: ${failure.reason}`
+      )
+      const tested: Machine[] = []
+      const testFailures: { machine: Machine; reason: string }[] = []
+
+      // A new secret is tested inline before it is saved or bound. The machine
+      // row already exists, so the endpoint still gets its destination from
+      // registration rather than accepting an attacker-controlled address.
+      if (inlineCredential) {
         for (const machine of created) {
           try {
-            await bind.mutateAsync({ mac: machine.mac, credentialId: boundId })
-          } catch {
-            unbound.push(machineName(machine))
+            const result = await testCredential.mutateAsync({
+              mac: machine.mac,
+              credential: inlineCredential,
+            })
+            if (result.ok) {
+              tested.push(machine)
+            } else {
+              testFailures.push({
+                machine,
+                reason: result.detail ?? "The machine did not answer the walk",
+              })
+            }
+          } catch (problem) {
+            testFailures.push({
+              machine,
+              reason: errorMessage(problem, "Credential test failed"),
+            })
+          }
+        }
+
+        // Keep the profile available for correction even when every walk
+        // fails, but only bind it to machines on which the inline test passed.
+        if (created.length > 0) {
+          try {
+            savedCredentialId = (
+              await createCredential.mutateAsync(inlineCredential)
+            ).id
+          } catch (problem) {
+            details.push(
+              `Credential profile was not saved: ${errorMessage(problem, "creation failed")}`
+            )
+          }
+        }
+      }
+
+      const bindFailures: { machine: Machine; reason: string }[] = []
+      if (savedCredentialId) {
+        const candidates = inlineCredential ? tested : created
+        for (const machine of candidates) {
+          try {
+            await bind.mutateAsync({
+              mac: machine.mac,
+              credentialId: savedCredentialId,
+            })
+          } catch (problem) {
+            bindFailures.push({
+              machine,
+              reason: errorMessage(problem, "Credential would not bind"),
+            })
+            continue
+          }
+
+          // Saved profiles have no readable secret to send inline. Bind first,
+          // test the resulting machine configuration, and undo a failed check.
+          if (!inlineCredential) {
+            let failureReason: string | null = null
+            try {
+              const result = await testCredential.mutateAsync({
+                mac: machine.mac,
+              })
+              if (result.ok) {
+                tested.push(machine)
+              } else {
+                failureReason =
+                  result.detail ?? "The machine did not answer the walk"
+              }
+            } catch (problem) {
+              failureReason = errorMessage(problem, "Credential test failed")
+            }
+
+            if (failureReason) {
+              testFailures.push({ machine, reason: failureReason })
+              try {
+                await unbind.mutateAsync(machine.mac)
+              } catch (problem) {
+                details.push(
+                  `${machineName(machine)}: the failed credential could not be unbound (${errorMessage(problem, "unbind failed")})`
+                )
+              }
+            }
           }
         }
       }
@@ -351,24 +451,41 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
       for (const failure of failed) {
         toast.error(`${failure.ipv4}: ${failure.reason}`)
       }
-      for (const name of unbound) {
-        toast.error(`${name} registered, but the credential would not bind`)
+      for (const failure of bindFailures) {
+        const message = `${machineName(failure.machine)}: ${failure.reason}`
+        details.push(message)
+        toast.error(message)
+      }
+      if (tested.length === 1) {
+        toast.success(`Credential worked on ${machineName(tested[0])}`)
+      } else if (tested.length > 1) {
+        toast.success(`Credential worked on ${tested.length} machines`)
+      }
+      for (const failure of testFailures) {
+        const name = machineName(failure.machine)
+        details.push(`${name}: ${failure.reason}`)
+        toast.error(`Walk failed on ${name}`, {
+          description: failure.reason,
+        })
       }
 
-      // Failures keep the dialog open with the selection intact, so the
-      // addresses that did not take can be retried or corrected.
-      if (failed.length === 0 && unbound.length === 0) {
+      if (details.length === 0) {
         setOpen(false)
         reset()
       } else {
-        setError(
-          failed.length > 0
-            ? `${failed.length} address${failed.length === 1 ? "" : "es"} failed`
-            : "Some machines registered without a credential"
-        )
+        setOutcome({
+          title:
+            created.length + attached.length > 0
+              ? "Machines added with issues"
+              : "Machines could not be added",
+          details,
+        })
       }
     } catch (problem) {
-      setError(errorMessage(problem, "Registration failed"))
+      setOutcome({
+        title: "Registration stopped",
+        details: [errorMessage(problem, "Registration failed")],
+      })
     } finally {
       setSubmitting(false)
     }
@@ -384,6 +501,7 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (!next && submitting) return
         setOpen(next)
         if (!next) reset()
       }}
@@ -399,96 +517,139 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {view ? `Add machines to ${view.name}` : "Register machines"}
+            {outcome
+              ? outcome.title
+              : view
+                ? `Add machines to ${view.name}`
+                : "Register machines"}
           </DialogTitle>
-          <DialogDescription>{stepDescription(step, view)}</DialogDescription>
+          <DialogDescription>
+            {outcome
+              ? "Successful registrations remain in place. Review credential and registration failures below."
+              : stepDescription(step, view)}
+          </DialogDescription>
         </DialogHeader>
 
-        <Stepper steps={steps} index={index} />
+        {outcome ? (
+          <>
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertTitle>Review these results</AlertTitle>
+              <AlertDescription>
+                <ul className="flex list-disc flex-col gap-1 pl-4">
+                  {outcome.details.map((detail, index) => (
+                    <li key={`${index}-${detail}`}>{detail}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  setOpen(false)
+                  reset()
+                }}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <Stepper steps={steps} index={index} />
 
-        <div className="max-h-[55vh] overflow-y-auto px-1">
-          {step === "target" ? (
-            <TargetStep
-              canRegister={canRegister}
-              available={available}
-              picked={picked}
-              onPicked={setPicked}
-              joinable={joinable}
-              attached={attached}
-              onAttached={setAttached}
-              ipv4={ipv4}
-              onIpv4={setIpv4}
-              mac={mac}
-              onMac={setMac}
-              label={label}
-              onLabel={setLabel}
-              macRequired={macRequired}
-              typedAddress={typedAddress}
-              invalid={error !== null}
-            />
-          ) : null}
+            <div className="max-h-[55vh] overflow-y-auto px-1">
+              {step === "target" ? (
+                <TargetStep
+                  canRegister={canRegister}
+                  available={available}
+                  picked={picked}
+                  onPicked={setPicked}
+                  joinable={joinable}
+                  attached={attached}
+                  onAttached={setAttached}
+                  ipv4={ipv4}
+                  onIpv4={setIpv4}
+                  mac={mac}
+                  onMac={setMac}
+                  label={label}
+                  onLabel={setLabel}
+                  macRequired={macRequired}
+                  typedAddress={typedAddress}
+                  invalid={error !== null}
+                />
+              ) : null}
 
-          {step === "credential" ? (
-            <CredentialStep
-              mode={mode}
-              onMode={(next) => {
-                setCredentialMode(next)
-                setError(null)
-              }}
-              canPickExisting={canPickExisting}
-              credentials={savedProfiles}
-              credentialId={credentialId}
-              onCredentialId={setCredentialId}
-              draft={draft}
-              onDraft={setDraft}
-              draftErrors={draftErrors}
-              disabled={submitting}
-            />
-          ) : null}
+              {step === "credential" ? (
+                <CredentialStep
+                  mode={mode}
+                  onMode={(next) => {
+                    setCredentialMode(next)
+                    setError(null)
+                  }}
+                  canPickExisting={canPickExisting}
+                  credentials={savedProfiles}
+                  credentialId={credentialId}
+                  onCredentialId={setCredentialId}
+                  draft={draft}
+                  onDraft={setDraft}
+                  draftErrors={draftErrors}
+                  disabled={submitting}
+                />
+              ) : null}
 
-          {step === "review" ? (
-            <ReviewStep
-              picked={picked}
-              typedAddress={typedAddress}
-              typedMac={mac.trim()}
-              typedLabel={label.trim()}
-              attached={attached}
-              machines={machines ?? []}
-              view={view}
-              credentialSummaryText={
-                !needsCredentialStep
-                  ? null
-                  : mode === "existing"
-                    ? selected
-                      ? `${selected.name} · ${credentialSummary(selected)}`
-                      : null
-                    : `${draft.name} · new ${draft.snmp_version === "3" ? "SNMPv3" : "SNMPv2c"} profile`
-              }
-            />
-          ) : null}
+              {step === "review" ? (
+                <ReviewStep
+                  picked={picked}
+                  typedAddress={typedAddress}
+                  typedMac={mac.trim()}
+                  typedLabel={label.trim()}
+                  attached={attached}
+                  machines={machines ?? []}
+                  view={view}
+                  credentialSummaryText={
+                    !needsCredentialStep
+                      ? null
+                      : mode === "existing"
+                        ? selected
+                          ? `${selected.name} · ${credentialSummary(selected)}`
+                          : null
+                        : `${draft.name} · new ${draft.snmp_version === "3" ? "SNMPv3" : "SNMPv2c"} profile`
+                  }
+                />
+              ) : null}
 
-          {error ? <FieldError className="mt-4">{error}</FieldError> : null}
-        </div>
+              {error ? <FieldError className="mt-4">{error}</FieldError> : null}
+            </div>
 
-        <DialogFooter className="mt-2 sm:justify-between">
-          <Button
-            variant="ghost"
-            disabled={index === 0 || submitting}
-            onClick={goBack}
-          >
-            Back
-          </Button>
-          {step === "review" ? (
-            <Button disabled={submitting} onClick={() => void handleSubmit()}>
-              {submitting ? <Spinner data-icon="inline-start" /> : null}
-              {registerCount + attached.length > 1
-                ? `Add ${registerCount + attached.length} machines`
-                : "Add machine"}
-            </Button>
-          ) : (
-            <Button onClick={goNext}>Continue</Button>
-          )}
-        </DialogFooter>
+            <DialogFooter className="mt-2 sm:justify-between">
+              <Button
+                variant="ghost"
+                disabled={index === 0 || submitting}
+                onClick={goBack}
+              >
+                Back
+              </Button>
+              {step === "review" ? (
+                <Button
+                  disabled={submitting}
+                  onClick={() => void handleSubmit()}
+                >
+                  {submitting ? <Spinner data-icon="inline-start" /> : null}
+                  {registerCount + attached.length > 1
+                    ? needsCredentialStep
+                      ? "Add machines and test new registrations"
+                      : `Add ${registerCount + attached.length} machines`
+                    : needsCredentialStep
+                      ? "Add and test machine"
+                      : "Add machine"}
+                </Button>
+              ) : (
+                <Button onClick={goNext}>Continue</Button>
+              )}
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -521,7 +682,8 @@ function Stepper({ steps, index }: { steps: Step[]; index: number }) {
             <span
               className={cn(
                 "flex size-5 items-center justify-center rounded-full border text-[0.65rem] tabular-nums",
-                position < index && "border-primary bg-primary text-primary-foreground",
+                position < index &&
+                  "border-primary bg-primary text-primary-foreground",
                 position === index && "border-primary text-primary"
               )}
             >
@@ -766,9 +928,7 @@ function CredentialStep({
                 <span className="min-w-0 flex-1 truncate font-medium">
                   {credential.name}
                 </span>
-                <Badge variant="outline">
-                  SNMPv{credential.snmp_version}
-                </Badge>
+                <Badge variant="outline">SNMPv{credential.snmp_version}</Badge>
                 {credentialId === credential.id ? (
                   <Check className="size-4 text-primary" />
                 ) : null}
@@ -872,6 +1032,12 @@ function ReviewStep({
           {credentialSummaryText ??
             "Not set. These machines stay registered but are not polled until one is bound."}
         </p>
+        {credentialSummaryText ? (
+          <FieldDescription>
+            Each new machine is checked once. New secrets are tested before
+            binding; a saved profile is unbound again if its check fails.
+          </FieldDescription>
+        ) : null}
       </Field>
     </FieldGroup>
   )

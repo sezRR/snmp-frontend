@@ -24,6 +24,7 @@ import {
   type PrivProtocol,
   SECURITY_LEVELS,
   type SecurityLevel,
+  type SnmpCredential,
   type SnmpCredentialForm,
   type SnmpVersion,
   WEAK_AUTH_PROTOCOLS,
@@ -38,6 +39,7 @@ import {
  */
 export interface CredentialDraft {
   name: string
+  description: string
   snmp_version: SnmpVersion
   community: string
   username: string
@@ -55,6 +57,7 @@ export interface CredentialDraft {
  */
 export const emptyCredentialDraft: CredentialDraft = {
   name: "",
+  description: "",
   snmp_version: "3",
   community: "",
   username: "",
@@ -67,6 +70,31 @@ export const emptyCredentialDraft: CredentialDraft = {
 }
 
 export type CredentialErrors = Partial<Record<keyof CredentialDraft, string>>
+
+/** Returned profiles omit secrets, so editing starts with those fields blank. */
+export function credentialDraftFrom(
+  credential: SnmpCredential
+): CredentialDraft {
+  const securityLevel = credential.security_level ?? "authPriv"
+  return {
+    ...emptyCredentialDraft,
+    name: credential.name,
+    description: credential.description ?? "",
+    snmp_version: credential.snmp_version,
+    username: credential.username ?? "",
+    security_level: securityLevel,
+    auth_protocol: credential.auth_protocol ?? "SHA256",
+    priv_protocol: credential.priv_protocol ?? "AES128",
+    allow_weak:
+      securityLevel === "noAuthNoPriv" ||
+      (credential.auth_protocol !== null &&
+        credential.auth_protocol !== undefined &&
+        WEAK_AUTH_PROTOCOLS.includes(credential.auth_protocol)) ||
+      (credential.priv_protocol !== null &&
+        credential.priv_protocol !== undefined &&
+        WEAK_PRIV_PROTOCOLS.includes(credential.priv_protocol)),
+  }
+}
 
 export interface ParsedDraft {
   data: SnmpCredentialForm | null
@@ -91,6 +119,7 @@ export function parseCredentialDraft(draft: CredentialDraft): ParsedDraft {
 
   const result = snmpCredentialFormSchema.safeParse({
     name: draft.name,
+    description: draft.description || undefined,
     snmp_version: draft.snmp_version,
     community: v3 ? undefined : draft.community || undefined,
     username: v3 ? draft.username || undefined : undefined,
@@ -121,8 +150,7 @@ export function draftIsWeak(draft: CredentialDraft): boolean {
   if (draft.snmp_version !== "3") return false
   if (draft.security_level === "noAuthNoPriv") return true
   const authed =
-    draft.security_level === "authNoPriv" ||
-    draft.security_level === "authPriv"
+    draft.security_level === "authNoPriv" || draft.security_level === "authPriv"
   if (authed && WEAK_AUTH_PROTOCOLS.includes(draft.auth_protocol)) return true
   return (
     draft.security_level === "authPriv" &&
@@ -227,6 +255,23 @@ export function SnmpCredentialFields({
         {errors.name ? <FieldError>{errors.name}</FieldError> : null}
       </Field>
 
+      <Field data-invalid={errors.description ? true : undefined}>
+        <FieldLabel htmlFor={`${idPrefix}-description`}>
+          Description (optional)
+        </FieldLabel>
+        <Input
+          id={`${idPrefix}-description`}
+          placeholder="Where and how this profile is used"
+          value={draft.description}
+          disabled={disabled}
+          aria-invalid={errors.description ? true : undefined}
+          onChange={(event) => set("description", event.target.value)}
+        />
+        {errors.description ? (
+          <FieldError>{errors.description}</FieldError>
+        ) : null}
+      </Field>
+
       {v3 ? (
         <>
           <Field>
@@ -325,7 +370,7 @@ export function SnmpCredentialFields({
                 At least 8 characters. Encrypted on the backend and never
                 readable again, only replaceable.
               </FieldDescription>
-              {errors.auth_protocol ?? errors.auth_passphrase ? (
+              {(errors.auth_protocol ?? errors.auth_passphrase) ? (
                 <FieldError>
                   {errors.auth_protocol ?? errors.auth_passphrase}
                 </FieldError>
@@ -376,7 +421,7 @@ export function SnmpCredentialFields({
                   }
                 />
               </div>
-              {errors.priv_protocol ?? errors.priv_passphrase ? (
+              {(errors.priv_protocol ?? errors.priv_passphrase) ? (
                 <FieldError>
                   {errors.priv_protocol ?? errors.priv_passphrase}
                 </FieldError>
@@ -427,7 +472,9 @@ export function SnmpCredentialFields({
             Sent unencrypted with every poll. Anything that can see the wire can
             read it, so prefer SNMPv3 wherever the agent supports it.
           </FieldDescription>
-          {errors.community ? <FieldError>{errors.community}</FieldError> : null}
+          {errors.community ? (
+            <FieldError>{errors.community}</FieldError>
+          ) : null}
         </Field>
       )}
     </FieldGroup>

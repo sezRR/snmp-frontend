@@ -1,3 +1,4 @@
+import { ManageMachineCredentialDialog } from "@/components/machines/manage-machine-credential-dialog"
 import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,6 +12,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -39,6 +41,7 @@ import { removeMachineFromViews, removeMachinesFromView } from "@/lib/views"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import {
   Eraser,
+  KeyRound,
   Minus,
   MoreHorizontal,
   Pencil,
@@ -55,10 +58,19 @@ function errorMessage(error: unknown, fallback: string): string {
 
 interface MachineActionsProps {
   machine: Machine
+  trigger?: React.ReactElement
+  includeViewAction?: boolean
+  onDeregistered?: () => void
 }
 
-export function MachineActions({ machine }: MachineActionsProps) {
+export function MachineActions({
+  machine,
+  trigger,
+  includeViewAction = true,
+  onDeregistered,
+}: MachineActionsProps) {
   const [editing, setEditing] = React.useState(false)
+  const [managingCredential, setManagingCredential] = React.useState(false)
   const [confirmingDelete, setConfirmingDelete] = React.useState(false)
   const [confirmingPurge, setConfirmingPurge] = React.useState(false)
   const [cutoff, setCutoff] = React.useState<Date | undefined>(undefined)
@@ -66,10 +78,12 @@ export function MachineActions({ machine }: MachineActionsProps) {
   const [ipv4, setIpv4] = React.useState(machine.ipv4)
   const [editError, setEditError] = React.useState<string | null>(null)
 
-  // Each item costs its own scope: editing and deregistering are
-  // `machines:write`, purging is `metrics:write`, and a forced round is
-  // `admin:write`. Removing from a view is local state and costs nothing.
+  // Each item costs its own scope: machine edits and deregistration are
+  // `machines:write`, credentials have their own write scope, purging is
+  // `metrics:write`, and a forced round is `admin:write`. Removing from a view
+  // is local state and costs nothing.
   const canEdit = useHasScope(SCOPES.machinesWrite)
+  const canManageCredential = useHasScope(SCOPES.credentialsWrite)
   const canPurge = useHasScope(SCOPES.metricsWrite)
   const canTick = useHasScope(SCOPES.adminWrite)
 
@@ -77,6 +91,7 @@ export function MachineActions({ machine }: MachineActionsProps) {
   // Only the machine's own detail page has to be left behind after a delete;
   // from a list the row just disappears and the user stays put.
   const { mac: openMac, viewId } = useParams({ strict: false })
+  const viewAction = includeViewAction ? viewId : undefined
   const update = useUpdateMachineMutation()
   const remove = useDeleteMachineMutation()
   const purge = usePurgeMachineMetricsMutation()
@@ -162,80 +177,111 @@ export function MachineActions({ machine }: MachineActionsProps) {
         toast.success(`Deregistered ${machineName(machine)}`)
         setConfirmingDelete(false)
         if (openMac === machine.mac) void navigate({ to: "/machines" })
+        onDeregistered?.()
       },
       onError: (error) => toast.error(errorMessage(error, "Delete failed")),
     })
   }
 
   // An empty menu is worse than no menu.
-  if (!canEdit && !canPurge && !canTick && !viewId) return null
+  if (
+    !canEdit &&
+    !canManageCredential &&
+    !canPurge &&
+    !canTick &&
+    !viewAction
+  ) {
+    return null
+  }
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button variant="ghost" size="icon-sm" aria-label="Machine actions">
-              <MoreHorizontal />
-            </Button>
+            trigger ?? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Machine actions"
+              >
+                <MoreHorizontal />
+              </Button>
+            )
           }
         />
         <DropdownMenuContent align="end" className="min-w-44">
-          {canEdit ? (
-            <>
+          <DropdownMenuGroup>
+            {canEdit ? (
+              <>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setLabel(machine.label ?? "")
+                    setIpv4(machine.ipv4)
+                    setEditError(null)
+                    setEditing(true)
+                  }}
+                >
+                  <Pencil />
+                  {machine.external ? "Edit" : "Rename"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleToggleEnabled}>
+                  <Power />
+                  {machine.enabled ? "Disable polling" : "Enable polling"}
+                </DropdownMenuItem>
+              </>
+            ) : null}
+            {canManageCredential ? (
+              <DropdownMenuItem onClick={() => setManagingCredential(true)}>
+                <KeyRound />
+                Manage credential
+              </DropdownMenuItem>
+            ) : null}
+            {canTick ? (
+              <DropdownMenuItem onClick={handleRetry} disabled={tick.isPending}>
+                <RefreshCw />
+                Retry now
+              </DropdownMenuItem>
+            ) : null}
+            {/* Only on a view page, where "remove" has somewhere to mean. */}
+            {viewAction ? (
               <DropdownMenuItem
                 onClick={() => {
-                  setLabel(machine.label ?? "")
-                  setIpv4(machine.ipv4)
-                  setEditError(null)
-                  setEditing(true)
+                  removeMachinesFromView(viewAction, [machine.mac])
+                  toast.success(`Removed ${machineName(machine)} from the view`)
                 }}
               >
-                <Pencil />
-                {machine.external ? "Edit" : "Rename"}
+                <Minus />
+                Remove from view
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleToggleEnabled}>
-                <Power />
-                {machine.enabled ? "Disable polling" : "Enable polling"}
-              </DropdownMenuItem>
-            </>
-          ) : null}
-          {canTick ? (
-            <DropdownMenuItem onClick={handleRetry} disabled={tick.isPending}>
-              <RefreshCw />
-              Retry now
-            </DropdownMenuItem>
-          ) : null}
-          {/* Only on a view page, where "remove" has somewhere to mean. */}
-          {viewId ? (
-            <DropdownMenuItem
-              onClick={() => {
-                removeMachinesFromView(viewId, [machine.mac])
-                toast.success(`Removed ${machineName(machine)} from the view`)
-              }}
-            >
-              <Minus />
-              Remove from view
-            </DropdownMenuItem>
-          ) : null}
+            ) : null}
+          </DropdownMenuGroup>
           {canPurge || canEdit ? <DropdownMenuSeparator /> : null}
-          {canPurge ? (
-            <DropdownMenuItem onClick={() => setConfirmingPurge(true)}>
-              <Eraser />
-              Purge history
-            </DropdownMenuItem>
-          ) : null}
-          {canEdit ? (
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => setConfirmingDelete(true)}
-            >
-              <Trash2 />
-              Deregister
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuGroup>
+            {canPurge ? (
+              <DropdownMenuItem onClick={() => setConfirmingPurge(true)}>
+                <Eraser />
+                Purge history
+              </DropdownMenuItem>
+            ) : null}
+            {canEdit ? (
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Trash2 />
+                Deregister
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <ManageMachineCredentialDialog
+        machine={machine}
+        open={managingCredential}
+        onOpenChange={setManagingCredential}
+      />
 
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-sm">

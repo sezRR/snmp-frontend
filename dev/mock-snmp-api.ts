@@ -191,6 +191,18 @@ const credentialSecrets = new Map<string, Record<string, string>>([
 
 const SECRET_FIELDS = ["community", "auth_passphrase", "priv_passphrase"]
 
+const SNMP_CREDENTIAL_FIELDS = [
+  "snmp_version",
+  "community",
+  "username",
+  "security_level",
+  "auth_protocol",
+  "auth_passphrase",
+  "priv_protocol",
+  "priv_passphrase",
+  "allow_weak",
+]
+
 const WEAK_CHOICES = ["MD5", "DES", "noAuthNoPriv"]
 
 const text = (body: Record<string, unknown>, key: string): string | null =>
@@ -232,7 +244,11 @@ function credentialProblem(body: Record<string, unknown>): string | null {
   if (!level) return "security_level: required for v3"
 
   const allowWeak = body.allow_weak === true
-  const chosen = [level, text(body, "auth_protocol"), text(body, "priv_protocol")]
+  const chosen = [
+    level,
+    text(body, "auth_protocol"),
+    text(body, "priv_protocol"),
+  ]
   const weak = chosen.find(
     (value) => value !== null && WEAK_CHOICES.includes(value)
   )
@@ -1152,9 +1168,27 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
             if (method === "GET") return json(res, 200, credentials[index])
             if (method === "PATCH") {
               const body = await readBody(req)
+              const previous = credentials[index]
+              const changesCredential = SNMP_CREDENTIAL_FIELDS.some((field) =>
+                Object.hasOwn(body, field)
+              )
+              if (!changesCredential) {
+                if (Object.hasOwn(body, "name") && !text(body, "name")) {
+                  return json(res, 422, { detail: "name: required" })
+                }
+                credentials[index] = {
+                  ...previous,
+                  name: text(body, "name") ?? previous.name,
+                  description: Object.hasOwn(body, "description")
+                    ? text(body, "description")
+                    : previous.description,
+                  updated_at: now(),
+                }
+                return json(res, 200, credentials[index])
+              }
+
               const invalid = credentialProblem(body)
               if (invalid) return json(res, 422, { detail: invalid })
-              const previous = credentials[index]
               const row = credentialFrom(body, id)
               // Any secret in the body replaces the stored one wholesale, and
               // the version is what makes that visible to a client.
@@ -1228,7 +1262,10 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
             const body = await readBody(req)
             const inline = body.credential as Record<string, unknown> | null
             if (inline) {
-              const invalid = credentialProblem(inline)
+              const invalid = credentialProblem({
+                ...inline,
+                name: "inline test",
+              })
               if (invalid) return json(res, 422, { detail: invalid })
             }
             if (!inline && !machine.credential_id) {

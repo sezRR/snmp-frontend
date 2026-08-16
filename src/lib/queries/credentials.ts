@@ -40,12 +40,13 @@ export function useCredentialsQuery({ enabled = true } = {}) {
 
 function useInvalidateCredentials() {
   const queryClient = useQueryClient()
-  return () => {
-    void queryClient.invalidateQueries({ queryKey: credentialsQueryKey })
-    // A bind writes `credential_id` onto the machine, so the machine list is
-    // stale the moment either end of the relationship moves.
-    void queryClient.invalidateQueries({ queryKey: machinesQueryKey })
-  }
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: credentialsQueryKey }),
+      // A bind writes `credential_id` onto the machine, so the machine list is
+      // stale the moment either end of the relationship moves.
+      queryClient.invalidateQueries({ queryKey: machinesQueryKey }),
+    ])
 }
 
 /**
@@ -75,6 +76,13 @@ function credentialBody(form: SnmpCredentialForm): Record<string, unknown> {
   return body
 }
 
+function credentialTestBody(form: SnmpCredentialForm): Record<string, unknown> {
+  const body = credentialBody(form)
+  delete body.name
+  delete body.description
+  return body
+}
+
 export function useCreateCredentialMutation() {
   const invalidate = useInvalidateCredentials()
   return useMutation({
@@ -88,16 +96,21 @@ export function useCreateCredentialMutation() {
 }
 
 /**
- * A patch that touches any USM field has to carry the whole shape — the
- * backend re-validates it as a create would — so this sends the same body the
- * create does rather than a diff.
+ * Metadata can be patched alone. A patch that touches any SNMP/USM field has
+ * to carry the whole credential shape, which the caller validates first.
  */
 export function useUpdateCredentialMutation() {
   const invalidate = useInvalidateCredentials()
   return useMutation({
-    mutationFn: ({ id, ...form }: SnmpCredentialForm & { id: string }) =>
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string
+      patch: Partial<SnmpCredentialForm>
+    }) =>
       api.patch(`/snmp-credentials/${encodeURIComponent(id)}`, {
-        body: credentialBody(form),
+        body: patch,
         schema: snmpCredentialSchema,
       }),
     onSuccess: invalidate,
@@ -123,10 +136,9 @@ export function useBindCredentialMutation() {
       mac: string
       credentialId: string
     }) =>
-      api.put<unknown>(
-        `/machines/${encodeURIComponent(mac)}/snmp-credential`,
-        { body: { credential_id: credentialId } }
-      ),
+      api.put<unknown>(`/machines/${encodeURIComponent(mac)}/snmp-credential`, {
+        body: { credential_id: credentialId },
+      }),
     onSuccess: invalidate,
   })
 }
@@ -159,7 +171,7 @@ export function useTestCredentialMutation() {
     }): Promise<CredentialTestResult> =>
       api.post(`/machines/${encodeURIComponent(mac)}/snmp-credential/test`, {
         body: credential
-          ? { credential: credentialBody(credential) }
+          ? { credential: credentialTestBody(credential) }
           : { credential: null },
         schema: credentialTestResultSchema,
       }),

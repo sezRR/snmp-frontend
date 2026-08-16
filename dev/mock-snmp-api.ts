@@ -706,37 +706,85 @@ async function readForm(req: IncomingMessage): Promise<Record<string, string>> {
 // refuse. Sign in as admin/admin for everything, or viewer/viewer to see the
 // read-only UI — which is the half of the behaviour a permissive mock hides.
 
-const ALL_SCOPES = [
-  "machines:read",
-  "machines:write",
-  "metrics:read",
-  "metrics:write",
-  "admin:read",
-  "admin:write",
-  "users:read",
-  "users:write",
-  "roles:read",
-  "roles:write",
-  "credentials:read",
-  "credentials:write",
+interface ScopeInfo {
+  name: string
+  description: string
+}
+
+interface MockRole {
+  id: string
+  name: string
+  description: string | null
+  is_system: boolean
+  scopes: string[]
+  created_at: string
+  updated_at: string
+}
+
+const scopeInfo: ScopeInfo[] = [
+  { name: "machines:read", description: "View registered machines" },
+  { name: "machines:write", description: "Register and update machines" },
+  { name: "metrics:read", description: "View and stream metric samples" },
+  { name: "metrics:write", description: "Collect and purge metrics" },
+  { name: "admin:read", description: "View collector and cache status" },
+  { name: "admin:write", description: "Run collector and cache operations" },
+  { name: "users:read", description: "View user accounts" },
+  { name: "users:write", description: "Create and manage user accounts" },
+  { name: "roles:read", description: "View roles and available scopes" },
+  { name: "roles:write", description: "Create and manage roles" },
+  {
+    name: "credentials:read",
+    description: "View SNMP credential profiles",
+  },
+  {
+    name: "credentials:write",
+    description: "Create and manage SNMP credential profiles",
+  },
 ]
 
-const ROLE_SCOPES: Record<string, string[]> = {
-  admin: ALL_SCOPES,
-  operator: [
-    "machines:read",
-    "machines:write",
-    "metrics:read",
-    "metrics:write",
-    "admin:read",
-    "admin:write",
-    "credentials:read",
-    "credentials:write",
-  ],
-  // Reading a credential profile never reveals a secret, but it does reveal
-  // the fleet's USM identities, so a viewer is not given even that.
-  viewer: ["machines:read", "metrics:read"],
-}
+const ALL_SCOPES = scopeInfo.map((scope) => scope.name)
+const rolesCreatedAt = new Date(Date.now() - 604_800_000).toISOString()
+
+const roles: MockRole[] = [
+  {
+    id: "1a5f2d5c-0001-4c8e-9a63-9a1f00000001",
+    name: "admin",
+    description: "Full access to the service",
+    is_system: true,
+    scopes: [...ALL_SCOPES],
+    created_at: rolesCreatedAt,
+    updated_at: now(),
+  },
+  {
+    id: "1a5f2d5c-0002-4c8e-9a63-9a1f00000002",
+    name: "operator",
+    description: "Operate the fleet without managing identities",
+    is_system: true,
+    scopes: [
+      "machines:read",
+      "machines:write",
+      "metrics:read",
+      "metrics:write",
+      "admin:read",
+      "admin:write",
+      "credentials:read",
+      "credentials:write",
+    ],
+    created_at: rolesCreatedAt,
+    updated_at: now(),
+  },
+  {
+    id: "1a5f2d5c-0003-4c8e-9a63-9a1f00000003",
+    name: "viewer",
+    description: "Read machine inventory and metrics",
+    is_system: true,
+    // Reading a credential profile never reveals a secret, but it does reveal
+    // the fleet's USM identities, so a viewer is not given even that.
+    scopes: ["machines:read", "metrics:read"],
+    created_at: rolesCreatedAt,
+    updated_at: now(),
+  },
+]
 
 interface MockUser {
   id: string
@@ -818,22 +866,58 @@ function issuePair(username: string) {
   }
 }
 
-/** Ends every session a user has — what a password change does. */
-function revokeAllFor(username: string) {
+function revokeRefreshFor(username: string) {
   for (const [token, issued] of refreshTokens) {
     if (issued.username === username) refreshTokens.delete(token)
   }
+}
+
+/** Ends every session a user has — what a password change does. */
+function revokeAllFor(username: string) {
+  revokeRefreshFor(username)
   for (const [token, issued] of accessTokens) {
     if (issued.username === username) accessTokens.delete(token)
+  }
+  for (const [ticket, issued] of streamTickets) {
+    if (issued.username === username) streamTickets.delete(ticket)
   }
 }
 
 const scopesOf = (user: MockUser): string[] => [
-  ...new Set(user.roles.flatMap((role) => ROLE_SCOPES[role] ?? [])),
+  ...new Set(
+    user.roles.flatMap(
+      (roleName) => roles.find((role) => role.name === roleName)?.scopes ?? []
+    )
+  ),
 ]
 
 const userByName = (username: string): MockUser | undefined =>
   users.find((user) => user.username === username)
+
+const roleByName = (name: string): MockRole | undefined =>
+  roles.find((role) => role.name === name)
+
+const unique = (values: string[]): string[] => [...new Set(values)]
+
+function stringList(
+  body: Record<string, unknown>,
+  key: string
+): string[] | null {
+  const value = body[key]
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "string")
+  ) {
+    return null
+  }
+  return unique(value)
+}
+
+const unknownScopes = (names: string[]): string[] =>
+  names.filter((name) => !scopeInfo.some((scope) => scope.name === name))
+
+const unknownRoles = (names: string[]): string[] =>
+  names.filter((name) => !roleByName(name))
 
 const userResponse = (user: MockUser) => ({
   id: user.id,
@@ -856,6 +940,13 @@ const PUBLIC_PATHS = new Set([
 
 /** The scope the real backend's dependency would demand for this request. */
 function requiredScope(path: string, method: string): string | null {
+  if (path === "/scopes") return "roles:read"
+  if (path === "/roles" || path.startsWith("/roles/")) {
+    return method === "GET" ? "roles:read" : "roles:write"
+  }
+  if (path === "/users" || path.startsWith("/users/")) {
+    return method === "GET" ? "users:read" : "users:write"
+  }
   if (path.startsWith("/admin")) {
     return method === "GET" ? "admin:read" : "admin:write"
   }
@@ -896,7 +987,9 @@ function callerFor(
       : null)
   if (!issued) return null
   const user = userByName(issued.username)
-  return user?.is_active ? user : null
+  // Deactivation revokes refresh tokens, but an already-issued access token
+  // remains usable for its short remaining lifetime.
+  return user ?? null
 }
 
 /** Spent by the connection it opens, whether or not that connection lasts. */
@@ -970,7 +1063,8 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
             const token =
               typeof body.refresh_token === "string" ? body.refresh_token : null
             const issued = redeem(refreshTokens, token)
-            if (!issued) {
+            const user = issued ? userByName(issued.username) : undefined
+            if (!issued || !user?.is_active) {
               return json(res, 401, { detail: "Invalid refresh token" })
             }
             // Rotation: the presented token is spent, exactly as the real one
@@ -1033,6 +1127,306 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
               ticket,
               expires_in: TICKET_TTL_SECONDS,
             })
+          }
+
+          // --- identity management -----------------------------------------
+          if (path === "/scopes" && method === "GET") {
+            return json(res, 200, scopeInfo)
+          }
+
+          if (path === "/roles" && method === "GET") {
+            return json(res, 200, roles)
+          }
+
+          if (path === "/roles" && method === "POST") {
+            const body = await readBody(req)
+            const name = typeof body.name === "string" ? body.name : ""
+            if (name.length < 1 || name.length > 100) {
+              return json(res, 422, {
+                detail: "name: must be 1-100 characters",
+              })
+            }
+            if (roleByName(name)) {
+              return json(res, 409, { detail: `Role ${name} already exists` })
+            }
+            if (
+              body.description !== undefined &&
+              body.description !== null &&
+              typeof body.description !== "string"
+            ) {
+              return json(res, 422, {
+                detail: "description: must be a string or null",
+              })
+            }
+            if (
+              typeof body.description === "string" &&
+              body.description.length > 500
+            ) {
+              return json(res, 422, {
+                detail: "description: must be at most 500 characters",
+              })
+            }
+
+            let roleScopes: string[] = []
+            if (body.scopes !== undefined) {
+              const parsed = stringList(body, "scopes")
+              if (!parsed) {
+                return json(res, 422, {
+                  detail: "scopes: must be an array of strings",
+                })
+              }
+              roleScopes = parsed
+            }
+            const missingScopes = unknownScopes(roleScopes)
+            if (missingScopes.length > 0) {
+              return json(res, 422, {
+                detail: `Unknown scope: ${missingScopes.join(", ")}`,
+              })
+            }
+
+            const timestamp = now()
+            const role: MockRole = {
+              id: randomUUID(),
+              name,
+              description:
+                typeof body.description === "string" ? body.description : null,
+              is_system: false,
+              scopes: roleScopes,
+              created_at: timestamp,
+              updated_at: timestamp,
+            }
+            roles.push(role)
+            return json(res, 201, role)
+          }
+
+          const roleScopesMatch = /^\/roles\/([^/]+)\/scopes$/.exec(path)
+          if (roleScopesMatch && method === "PUT") {
+            const name = decodeURIComponent(roleScopesMatch[1])
+            const role = roleByName(name)
+            if (!role) {
+              return json(res, 404, { detail: `Role ${name} not found` })
+            }
+            if (role.is_system) {
+              return json(res, 409, {
+                detail: `System role ${name} scopes cannot be replaced`,
+              })
+            }
+
+            const body = await readBody(req)
+            const nextScopes = stringList(body, "scopes")
+            if (!nextScopes) {
+              return json(res, 422, {
+                detail: "scopes: must be an array of strings",
+              })
+            }
+            const missingScopes = unknownScopes(nextScopes)
+            if (missingScopes.length > 0) {
+              return json(res, 422, {
+                detail: `Unknown scope: ${missingScopes.join(", ")}`,
+              })
+            }
+
+            const previousScopes = role.scopes
+            role.scopes = nextScopes
+            const keepsUserManager = users.some(
+              (user) => user.is_active && scopesOf(user).includes("users:write")
+            )
+            role.scopes = previousScopes
+            if (!keepsUserManager) {
+              return json(res, 409, {
+                detail: "At least one active user must retain users:write",
+              })
+            }
+
+            role.scopes = nextScopes
+            role.updated_at = now()
+            return json(res, 200, role)
+          }
+
+          const roleMatch = /^\/roles\/([^/]+)$/.exec(path)
+          if (roleMatch) {
+            const name = decodeURIComponent(roleMatch[1])
+            const index = roles.findIndex((role) => role.name === name)
+            if (index === -1) {
+              return json(res, 404, { detail: `Role ${name} not found` })
+            }
+            if (method === "GET") {
+              return json(res, 200, roles[index])
+            }
+            if (method === "PATCH") {
+              const body = await readBody(req)
+              if (
+                body.description !== undefined &&
+                body.description !== null &&
+                typeof body.description !== "string"
+              ) {
+                return json(res, 422, {
+                  detail: "description: must be a string or null",
+                })
+              }
+              if (
+                typeof body.description === "string" &&
+                body.description.length > 500
+              ) {
+                return json(res, 422, {
+                  detail: "description: must be at most 500 characters",
+                })
+              }
+              if (Object.hasOwn(body, "description")) {
+                roles[index].description =
+                  typeof body.description === "string" ? body.description : null
+              }
+              roles[index].updated_at = now()
+              return json(res, 200, roles[index])
+            }
+            if (method === "DELETE") {
+              if (roles[index].is_system) {
+                return json(res, 409, {
+                  detail: `System role ${name} cannot be deleted`,
+                })
+              }
+              if (users.some((user) => user.roles.includes(name))) {
+                return json(res, 409, {
+                  detail: `Role ${name} is still assigned to a user`,
+                })
+              }
+              roles.splice(index, 1)
+              res.writeHead(204)
+              return res.end()
+            }
+          }
+
+          if (path === "/users" && method === "GET") {
+            return json(res, 200, users.map(userResponse))
+          }
+
+          if (path === "/users" && method === "POST") {
+            const body = await readBody(req)
+            const username =
+              typeof body.username === "string" ? body.username : ""
+            if (username.length < 1 || username.length > 100) {
+              return json(res, 422, {
+                detail: "username: must be 1-100 characters",
+              })
+            }
+            if (userByName(username)) {
+              return json(res, 409, {
+                detail: `User ${username} already exists`,
+              })
+            }
+            if (typeof body.password !== "string" || !body.password) {
+              return json(res, 422, { detail: "password: required" })
+            }
+
+            let userRoles: string[] = []
+            if (body.roles !== undefined) {
+              const parsed = stringList(body, "roles")
+              if (!parsed) {
+                return json(res, 422, {
+                  detail: "roles: must be an array of strings",
+                })
+              }
+              userRoles = parsed
+            }
+            const missingRoles = unknownRoles(userRoles)
+            if (missingRoles.length > 0) {
+              return json(res, 422, {
+                detail: `Unknown role: ${missingRoles.join(", ")}`,
+              })
+            }
+
+            const timestamp = now()
+            const user: MockUser = {
+              id: randomUUID(),
+              username,
+              password: body.password,
+              is_active: true,
+              roles: userRoles,
+              created_at: timestamp,
+              updated_at: timestamp,
+            }
+            users.push(user)
+            return json(res, 201, userResponse(user))
+          }
+
+          const userRolesMatch = /^\/users\/([^/]+)\/roles$/.exec(path)
+          if (userRolesMatch && method === "PUT") {
+            const id = decodeURIComponent(userRolesMatch[1])
+            const user = users.find((entry) => entry.id === id)
+            if (!user) {
+              return json(res, 404, { detail: `User ${id} not found` })
+            }
+            const body = await readBody(req)
+            const nextRoles = stringList(body, "roles")
+            if (!nextRoles) {
+              return json(res, 422, {
+                detail: "roles: must be an array of strings",
+              })
+            }
+            const missingRoles = unknownRoles(nextRoles)
+            if (missingRoles.length > 0) {
+              return json(res, 422, {
+                detail: `Unknown role: ${missingRoles.join(", ")}`,
+              })
+            }
+            user.roles = nextRoles
+            user.updated_at = now()
+            return json(res, 200, userResponse(user))
+          }
+
+          const userPasswordMatch = /^\/users\/([^/]+)\/password$/.exec(path)
+          if (userPasswordMatch && method === "PUT") {
+            const id = decodeURIComponent(userPasswordMatch[1])
+            const user = users.find((entry) => entry.id === id)
+            if (!user) {
+              return json(res, 404, { detail: `User ${id} not found` })
+            }
+            const body = await readBody(req)
+            if (typeof body.new_password !== "string" || !body.new_password) {
+              return json(res, 422, { detail: "new_password: required" })
+            }
+            user.password = body.new_password
+            user.updated_at = now()
+            revokeAllFor(user.username)
+            res.writeHead(204)
+            return res.end()
+          }
+
+          const userMatch = /^\/users\/([^/]+)$/.exec(path)
+          if (userMatch) {
+            const id = decodeURIComponent(userMatch[1])
+            const index = users.findIndex((user) => user.id === id)
+            if (index === -1) {
+              return json(res, 404, { detail: `User ${id} not found` })
+            }
+            if (method === "GET") {
+              return json(res, 200, userResponse(users[index]))
+            }
+            if (method === "PATCH") {
+              const body = await readBody(req)
+              if (
+                body.is_active !== undefined &&
+                body.is_active !== null &&
+                typeof body.is_active !== "boolean"
+              ) {
+                return json(res, 422, {
+                  detail: "is_active: must be a boolean or null",
+                })
+              }
+              if (typeof body.is_active === "boolean") {
+                const deactivated = users[index].is_active && !body.is_active
+                users[index].is_active = body.is_active
+                if (deactivated) revokeRefreshFor(users[index].username)
+              }
+              users[index].updated_at = now()
+              return json(res, 200, userResponse(users[index]))
+            }
+            if (method === "DELETE") {
+              revokeAllFor(users[index].username)
+              users.splice(index, 1)
+              res.writeHead(204)
+              return res.end()
+            }
           }
 
           // --- machines -------------------------------------------------

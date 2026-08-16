@@ -13,6 +13,8 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
+import { Route as AuthedRolesRouteImport } from './routes/_authed/roles'
+import { Route as AuthedUsersRouteImport } from './routes/_authed/users'
 import { Route as AuthedMachinesIndexRouteImport } from './routes/_authed/machines/index'
 import { Route as AuthedMachinesMacRouteImport } from './routes/_authed/machines/$mac'
 import { Route as AuthedViewsViewIdRouteImport } from './routes/_authed/views/$viewId'
@@ -36,6 +38,16 @@ const AuthedAdminRoute = AuthedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedRolesRoute = AuthedRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedUsersRoute = AuthedUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedMachinesIndexRoute = AuthedMachinesIndexRouteImport.update({
   id: '/machines/',
   path: '/machines/',
@@ -56,6 +68,8 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
   '/admin': typeof AuthedAdminRoute
+  '/roles': typeof AuthedRolesRoute
+  '/users': typeof AuthedUsersRoute
   '/machines/$mac': typeof AuthedMachinesMacRoute
   '/views/$viewId': typeof AuthedViewsViewIdRoute
   '/machines/': typeof AuthedMachinesIndexRoute
@@ -63,6 +77,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/admin': typeof AuthedAdminRoute
+  '/roles': typeof AuthedRolesRoute
+  '/users': typeof AuthedUsersRoute
   '/': typeof AuthedIndexRoute
   '/machines/$mac': typeof AuthedMachinesMacRoute
   '/views/$viewId': typeof AuthedViewsViewIdRoute
@@ -73,6 +89,8 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authed/admin': typeof AuthedAdminRoute
+  '/_authed/roles': typeof AuthedRolesRoute
+  '/_authed/users': typeof AuthedUsersRoute
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/machines/$mac': typeof AuthedMachinesMacRoute
   '/_authed/views/$viewId': typeof AuthedViewsViewIdRoute
@@ -84,6 +102,8 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/admin'
+    | '/roles'
+    | '/users'
     | '/machines/$mac'
     | '/views/$viewId'
     | '/machines/'
@@ -91,6 +111,8 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/admin'
+    | '/roles'
+    | '/users'
     | '/'
     | '/machines/$mac'
     | '/views/$viewId'
@@ -100,6 +122,8 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/_authed/admin'
+    | '/_authed/roles'
+    | '/_authed/users'
     | '/_authed/'
     | '/_authed/machines/$mac'
     | '/_authed/views/$viewId'
@@ -141,6 +165,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedAdminRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/roles': {
+      id: '/_authed/roles'
+      path: '/roles'
+      fullPath: '/roles'
+      preLoaderRoute: typeof AuthedRolesRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/users': {
+      id: '/_authed/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AuthedUsersRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/machines/': {
       id: '/_authed/machines/'
       path: '/machines'
@@ -167,6 +205,8 @@ declare module '@tanstack/react-router' {
 
 interface AuthedRouteChildren {
   AuthedAdminRoute: typeof AuthedAdminRoute
+  AuthedRolesRoute: typeof AuthedRolesRoute
+  AuthedUsersRoute: typeof AuthedUsersRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
   AuthedMachinesMacRoute: typeof AuthedMachinesMacRoute
   AuthedViewsViewIdRoute: typeof AuthedViewsViewIdRoute
@@ -175,6 +215,8 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAdminRoute: AuthedAdminRoute,
+  AuthedRolesRoute: AuthedRolesRoute,
+  AuthedUsersRoute: AuthedUsersRoute,
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedMachinesMacRoute: AuthedMachinesMacRoute,
   AuthedViewsViewIdRoute: AuthedViewsViewIdRoute,

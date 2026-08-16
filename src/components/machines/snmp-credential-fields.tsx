@@ -96,6 +96,49 @@ export function credentialDraftFrom(
   }
 }
 
+const CREDENTIAL_SHAPE_FIELDS: (keyof CredentialDraft)[] = [
+  "snmp_version",
+  "community",
+  "username",
+  "security_level",
+  "auth_protocol",
+  "auth_passphrase",
+  "priv_protocol",
+  "priv_passphrase",
+  "allow_weak",
+]
+
+/** Whether an edit needs the complete write-only credential shape. */
+export function credentialShapeChanged(
+  draft: CredentialDraft,
+  credential: SnmpCredential
+): boolean {
+  const original = credentialDraftFrom(credential)
+  return CREDENTIAL_SHAPE_FIELDS.some(
+    (field) => draft[field] !== original[field]
+  )
+}
+
+export function parseCredentialMetadataDraft(draft: CredentialDraft): {
+  data: Pick<SnmpCredentialForm, "name" | "description"> | null
+  errors: CredentialErrors
+} {
+  const errors: CredentialErrors = {}
+  const name = draft.name.trim()
+  if (!name) errors.name = "Name the credential"
+  if (name.length > 200) errors.name = "Name must be 200 characters or less"
+  if (draft.description.length > 1000) {
+    errors.description = "Description must be 1000 characters or less"
+  }
+  return {
+    data:
+      Object.keys(errors).length === 0
+        ? { name, description: draft.description }
+        : null,
+    errors,
+  }
+}
+
 export interface ParsedDraft {
   data: SnmpCredentialForm | null
   errors: CredentialErrors

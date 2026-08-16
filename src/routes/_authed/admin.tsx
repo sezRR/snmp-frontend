@@ -1,3 +1,4 @@
+import { CredentialsAdminCard } from "@/components/admin/credentials-card"
 import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
 import { MachineStatusDot } from "@/components/sidebar/machine-status-dot"
 import { Badge } from "@/components/ui/badge"
@@ -18,16 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
+import { requireRouteScope } from "@/lib/auth/route-guards"
 import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import { formatCount, formatDuration, formatTimestamp } from "@/lib/format"
 import {
@@ -47,12 +42,14 @@ import {
   usePurgeAllMetricsMutation,
 } from "@/lib/queries/metrics"
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
-import { Lock, RefreshCw, Trash2 } from "lucide-react"
+import { Navigate, createFileRoute } from "@tanstack/react-router"
+import { RefreshCw, Trash2 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
 export const Route = createFileRoute("/_authed/admin")({
+  beforeLoad: ({ context, location }) =>
+    requireRouteScope(context.queryClient, SCOPES.adminRead, location.href),
   component: AdminPage,
 })
 
@@ -66,6 +63,7 @@ function AdminPage() {
   // metrics scopes, which an admin does not automatically hold.
   const canRead = useHasScope(SCOPES.adminRead)
   const canWrite = useHasScope(SCOPES.adminWrite)
+  const canReadMachines = useHasScope(SCOPES.machinesRead)
   const canReadMetrics = useHasScope(SCOPES.metricsRead)
   const canPurge = useHasScope(SCOPES.metricsWrite)
 
@@ -73,7 +71,10 @@ function AdminPage() {
   const { data: cache } = useCacheStatsQuery()
   const { data: servers } = useCachedServersQuery()
   const { data: counts } = useMetricCountsQuery()
-  const { data: machines } = useQuery(machinesQueryOptions())
+  const { data: machines } = useQuery({
+    ...machinesQueryOptions(),
+    enabled: canReadMachines,
+  })
 
   const tick = useForceTickMutation()
   const flush = useFlushCacheMutation()
@@ -98,21 +99,7 @@ function AdminPage() {
   }
 
   if (!canRead) {
-    return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Lock />
-          </EmptyMedia>
-          <EmptyTitle>Not your page</EmptyTitle>
-          <EmptyDescription>
-            Reading the collector and the OpenStack cache needs the{" "}
-            <code>admin:read</code> scope. Ask an administrator for a role that
-            holds it.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    )
+    return <Navigate to="/" replace />
   }
 
   return (
@@ -294,6 +281,8 @@ function AdminPage() {
           </div>
         </CardContent>
       </Card>
+
+      <CredentialsAdminCard />
 
       {canReadMetrics ? (
         <Card>

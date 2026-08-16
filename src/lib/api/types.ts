@@ -59,6 +59,77 @@ export const passwordChangeSchema = z
   })
 export type PasswordChangeForm = z.infer<typeof passwordChangeSchema>
 
+// --- Identity management --------------------------------------------------
+
+const identityTimestampSchema = z.iso.datetime({ offset: true })
+
+export const roleOutSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  description: z.string().nullable(),
+  is_system: z.boolean(),
+  scopes: z.array(z.string()),
+  created_at: identityTimestampSchema,
+  updated_at: identityTimestampSchema,
+})
+export type RoleOut = z.infer<typeof roleOutSchema>
+
+export const roleCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
+  scopes: z.array(z.string()).optional(),
+})
+export type RoleCreate = z.infer<typeof roleCreateSchema>
+
+export const roleUpdateSchema = z.object({
+  description: z.string().max(500).nullable().optional(),
+})
+export type RoleUpdate = z.infer<typeof roleUpdateSchema>
+
+export const scopeInfoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+})
+export type ScopeInfo = z.infer<typeof scopeInfoSchema>
+
+export const userOutSchema = z.object({
+  id: z.uuid(),
+  username: z.string(),
+  is_active: z.boolean(),
+  roles: z.array(z.string()),
+  scopes: z.array(z.string()),
+  created_at: identityTimestampSchema,
+  updated_at: identityTimestampSchema,
+})
+export type UserOut = z.infer<typeof userOutSchema>
+
+export const userCreateSchema = z.object({
+  username: z.string().min(1).max(100),
+  password: z.string().min(1),
+  roles: z.array(z.string()).optional(),
+})
+export type UserCreate = z.infer<typeof userCreateSchema>
+
+export const userUpdateSchema = z.object({
+  is_active: z.boolean().nullable().optional(),
+})
+export type UserUpdate = z.infer<typeof userUpdateSchema>
+
+export const replaceRoleScopesSchema = z.object({
+  scopes: z.array(z.string()),
+})
+export type ReplaceRoleScopes = z.infer<typeof replaceRoleScopesSchema>
+
+export const replaceUserRolesSchema = z.object({
+  roles: z.array(z.string()),
+})
+export type ReplaceUserRoles = z.infer<typeof replaceUserRolesSchema>
+
+export const resetUserPasswordSchema = z.object({
+  new_password: z.string().min(1),
+})
+export type ResetUserPassword = z.infer<typeof resetUserPasswordSchema>
+
 export const flavorInfoSchema = z.object({
   name: z.string(),
   vcpus: z.number().int(),
@@ -269,11 +340,7 @@ export const snmpCredentialFormSchema = z
 
     if (level === "authNoPriv" || level === "authPriv") {
       require("auth_protocol", value.auth_protocol, "Pick an auth protocol")
-      require(
-        "auth_passphrase",
-        value.auth_passphrase,
-        "Enter the auth passphrase"
-      )
+      require("auth_passphrase", value.auth_passphrase, "Enter the auth passphrase")
       if (
         value.auth_protocol &&
         WEAK_AUTH_PROTOCOLS.includes(value.auth_protocol) &&
@@ -289,11 +356,7 @@ export const snmpCredentialFormSchema = z
 
     if (level === "authPriv") {
       require("priv_protocol", value.priv_protocol, "Pick a privacy protocol")
-      require(
-        "priv_passphrase",
-        value.priv_passphrase,
-        "Enter the privacy passphrase"
-      )
+      require("priv_passphrase", value.priv_passphrase, "Enter the privacy passphrase")
       if (
         value.priv_protocol &&
         WEAK_PRIV_PROTOCOLS.includes(value.priv_protocol) &&

@@ -17,13 +17,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { SCOPES, useScopes } from "@/lib/auth/scopes"
 import { Link, useLocation } from "@tanstack/react-router"
-import { Activity, Wrench } from "lucide-react"
+import { Activity, ShieldCheck, Users, Wrench } from "lucide-react"
 import * as React from "react"
 
 const navItems = [
   { title: "Admin", to: "/admin", icon: Wrench, scope: SCOPES.adminRead },
+  { title: "Users", to: "/users", icon: Users, scope: SCOPES.usersRead },
+  { title: "Roles", to: "/roles", icon: ShieldCheck, scope: SCOPES.rolesRead },
 ] as const
 
 interface RouteSectionOverrides {
@@ -37,12 +39,8 @@ export function AppSidebar() {
   const sections = useSidebarSections()
   const [routeOverrides, setRouteOverrides] =
     React.useState<RouteSectionOverrides>(() => ({ pathname, values: {} }))
-  // The admin page is nothing but collector and cache internals, so without
-  // the scope to read them there is no page to navigate to.
-  const canReadAdmin = useHasScope(SCOPES.adminRead)
-  const visibleItems = navItems.filter(
-    (item) => item.scope === null || canReadAdmin
-  )
+  const scopes = useScopes()
+  const visibleItems = navItems.filter((item) => scopes.includes(item.scope))
 
   if (routeOverrides.pathname !== pathname) {
     setRouteOverrides({ pathname, values: {} })

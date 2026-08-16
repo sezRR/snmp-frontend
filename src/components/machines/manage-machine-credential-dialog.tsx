@@ -3,8 +3,10 @@ import {
   type CredentialErrors,
   SnmpCredentialFields,
   credentialDraftFrom,
+  credentialShapeChanged,
   emptyCredentialDraft,
   parseCredentialDraft,
+  parseCredentialMetadataDraft,
 } from "@/components/machines/snmp-credential-fields"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -71,18 +73,6 @@ interface ManageMachineCredentialDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-const CREDENTIAL_SHAPE_FIELDS: (keyof CredentialDraft)[] = [
-  "snmp_version",
-  "community",
-  "username",
-  "security_level",
-  "auth_protocol",
-  "auth_passphrase",
-  "priv_protocol",
-  "priv_passphrase",
-  "allow_weak",
-]
-
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
 }
@@ -94,16 +84,6 @@ function testFeedback(result: CredentialTestResult): TestFeedback {
     title: result.ok ? "SNMP walk succeeded" : "SNMP walk failed",
     detail: `${result.detail ?? (result.ok ? "The credential works." : "The machine did not answer.")} Completed in ${duration}${result.simulated ? " (simulated)." : "."}`,
   }
-}
-
-function credentialShapeChanged(
-  draft: CredentialDraft,
-  credential: SnmpCredential
-): boolean {
-  const original = credentialDraftFrom(credential)
-  return CREDENTIAL_SHAPE_FIELDS.some(
-    (field) => draft[field] !== original[field]
-  )
 }
 
 export function ManageMachineCredentialDialog({
@@ -248,19 +228,13 @@ export function ManageMachineCredentialDialog({
   }
 
   const metadataPatch = (): Partial<SnmpCredentialForm> | null => {
-    const errors: CredentialErrors = {}
-    const name = draft.name.trim()
-    if (!name) errors.name = "Name the credential"
-    if (name.length > 200) errors.name = "Name must be 200 characters or less"
-    if (draft.description.length > 1000) {
-      errors.description = "Description must be 1000 characters or less"
-    }
-    setDraftErrors(errors)
-    if (Object.keys(errors).length > 0) {
+    const parsed = parseCredentialMetadataDraft(draft)
+    setDraftErrors(parsed.errors)
+    if (!parsed.data) {
       setError("Fix the highlighted fields")
       return null
     }
-    return { name, description: draft.description }
+    return parsed.data
   }
 
   const handleTestDraft = async () => {

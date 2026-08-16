@@ -116,9 +116,13 @@ export function AppBreadcrumbs() {
     ? "Machines"
     : pathname.startsWith("/admin")
       ? "Admin"
-      : pathname.startsWith("/settings")
-        ? "Settings"
-        : "Not found"
+      : pathname.startsWith("/users")
+        ? "Users"
+        : pathname.startsWith("/roles")
+          ? "Roles"
+          : pathname.startsWith("/settings")
+            ? "Settings"
+            : "Not found"
 
   return (
     <Trail>

@@ -38,6 +38,7 @@ import { SCOPES, useHasScope } from "@/lib/auth/scopes"
 import {
   credentialSummary,
   useBindCredentialMutation,
+  useCreateCredentialMutation,
   useCredentialsQuery,
   useDeleteCredentialMutation,
   useTestCredentialMutation,
@@ -53,13 +54,14 @@ import {
   CircleAlert,
   KeyRound,
   Pencil,
+  Plus,
   Trash2,
   Unplug,
 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
-type Screen = "manage" | "edit" | "delete" | "unbind"
+type Screen = "manage" | "create" | "edit" | "delete" | "unbind"
 
 interface TestFeedback {
   ok: boolean
@@ -108,6 +110,7 @@ export function ManageMachineCredentialDialog({
 
   const bind = useBindCredentialMutation()
   const unbind = useUnbindCredentialMutation()
+  const create = useCreateCredentialMutation()
   const update = useUpdateCredentialMutation()
   const remove = useDeleteCredentialMutation()
   const test = useTestCredentialMutation()
@@ -128,6 +131,7 @@ export function ManageMachineCredentialDialog({
   const busy =
     bind.isPending ||
     unbind.isPending ||
+    create.isPending ||
     update.isPending ||
     remove.isPending ||
     test.isPending
@@ -164,15 +168,19 @@ export function ManageMachineCredentialDialog({
     }
   }
 
-  const handleBind = async () => {
-    if (!selected || selected.id === currentId) return
+  /**
+   * Bind, then prove it: a profile that binds but cannot walk the machine
+   * leaves it registered and unpolled, so a failed check puts the previous
+   * binding back rather than leaving the machine worse off than it started.
+   */
+  const bindProfile = async (profile: SnmpCredential) => {
     const previousCredentialId = currentId
     setFeedback(null)
     setError(null)
     try {
       await bind.mutateAsync({
         mac: machine.mac,
-        credentialId: selected.id,
+        credentialId: profile.id,
       })
     } catch (problem) {
       setError(errorMessage(problem, "Credential would not bind"))
@@ -181,7 +189,7 @@ export function ManageMachineCredentialDialog({
 
     const result = await runBoundTest()
     if (result?.ok) {
-      toast.success(`Bound ${selected.name} to ${machineName(machine)}`)
+      toast.success(`Bound ${profile.name} to ${machineName(machine)}`)
       return
     }
 
@@ -191,16 +199,21 @@ export function ManageMachineCredentialDialog({
           mac: machine.mac,
           credentialId: previousCredentialId,
         })
-        toast.error(`${selected.name} failed; restored the previous profile`)
+        toast.error(`${profile.name} failed; restored the previous profile`)
       } else {
         await unbind.mutateAsync(machine.mac)
-        toast.error(`${selected.name} failed and was left unbound`)
+        toast.error(`${profile.name} failed and was left unbound`)
       }
     } catch (problem) {
       setError(
         errorMessage(problem, "The failed binding could not be rolled back")
       )
     }
+  }
+
+  const handleBind = async () => {
+    if (!selected || selected.id === currentId) return
+    await bindProfile(selected)
   }
 
   const handleUnbind = async () => {
@@ -218,6 +231,12 @@ export function ManageMachineCredentialDialog({
     setDraft(credentialDraftFrom(selected))
     setDraftErrors({})
     changeScreen("edit")
+  }
+
+  const beginCreate = () => {
+    setDraft(emptyCredentialDraft)
+    setDraftErrors({})
+    changeScreen("create")
   }
 
   const validDraft = (): SnmpCredentialForm | null => {
@@ -258,6 +277,34 @@ export function ManageMachineCredentialDialog({
     }
   }
 
+  /**
+   * The profile is saved before it is bound, so a secret that turns out not to
+   * walk this machine is still on the list to be corrected rather than typed
+   * again. Binding then goes through the same test-and-roll-back path as any
+   * other profile.
+   */
+  const handleCreate = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const credential = validDraft()
+    if (!credential) return
+
+    setError(null)
+    let created: SnmpCredential
+    try {
+      created = await create.mutateAsync(credential)
+    } catch (problem) {
+      setError(errorMessage(problem, "Credential could not be saved"))
+      return
+    }
+
+    toast.success(`Saved ${created.name}`)
+    setSelectedId(created.id)
+    setDraft(emptyCredentialDraft)
+    setDraftErrors({})
+    setScreen("manage")
+    await bindProfile(created)
+  }
+
   const handleUpdate = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!selected) return
@@ -295,20 +342,24 @@ export function ManageMachineCredentialDialog({
   const title =
     screen === "edit"
       ? `Edit ${selected?.name ?? "credential"}`
-      : screen === "delete"
-        ? "Delete credential?"
-        : screen === "unbind"
-          ? "Unbind credential?"
-          : "Manage SNMP credential"
+      : screen === "create"
+        ? "New SNMP credential"
+        : screen === "delete"
+          ? "Delete credential?"
+          : screen === "unbind"
+            ? "Unbind credential?"
+            : "Manage SNMP credential"
 
   const description =
     screen === "edit"
       ? "Name and description can change alone. To change SNMP settings or rotate a secret, enter the complete credential again."
-      : screen === "delete"
-        ? "This removes the saved profile permanently. It cannot be undone."
-        : screen === "unbind"
-          ? `${machineName(machine)} stays registered but is not polled until another profile is bound.`
-          : `Test or change the profile used to poll ${machineName(machine)} at ${machine.ipv4}.`
+      : screen === "create"
+        ? `Saved as a profile, then bound to ${machineName(machine)} and checked with one walk. A failed walk leaves the previous binding in place.`
+        : screen === "delete"
+          ? "This removes the saved profile permanently. It cannot be undone."
+          : screen === "unbind"
+            ? `${machineName(machine)} stays registered but is not polled until another profile is bound.`
+            : `Test or change the profile used to poll ${machineName(machine)} at ${machine.ipv4}.`
 
   return (
     <Dialog
@@ -376,7 +427,20 @@ export function ManageMachineCredentialDialog({
                 {feedback ? <TestResult feedback={feedback} /> : null}
 
                 <Field>
-                  <FieldLabel>Saved profiles</FieldLabel>
+                  <FieldLabel>
+                    Saved profiles
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="ml-auto"
+                      disabled={busy}
+                      onClick={beginCreate}
+                    >
+                      <Plus data-icon="inline-start" />
+                      New profile
+                    </Button>
+                  </FieldLabel>
                   {profiles.length > 0 ? (
                     <div className="flex max-h-52 flex-col gap-1.5 overflow-y-auto">
                       {profiles.map((profile) => (
@@ -402,8 +466,8 @@ export function ManageMachineCredentialDialog({
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       {canReadCredentials
-                        ? "No saved profiles are available. Create one while registering a machine."
-                        : "Credential metadata requires credentials:read permission."}
+                        ? "No saved profiles yet. Create one with the button above."
+                        : "Credential metadata requires credentials:read permission. A new profile can still be created and bound here."}
                     </p>
                   )}
                   {selected ? (
@@ -456,6 +520,57 @@ export function ManageMachineCredentialDialog({
               </DialogFooter>
             ) : null}
           </>
+        ) : null}
+
+        {screen === "create" ? (
+          <form onSubmit={(event) => void handleCreate(event)}>
+            <div className="max-h-[58vh] overflow-y-auto px-1">
+              <FieldGroup>
+                <SnmpCredentialFields
+                  draft={draft}
+                  onChange={(next) => {
+                    setDraft(next)
+                    setFeedback(null)
+                    setError(null)
+                  }}
+                  errors={draftErrors}
+                  disabled={busy}
+                  idPrefix="new-machine-credential"
+                />
+                {feedback ? <TestResult feedback={feedback} /> : null}
+                {error ? <FieldError>{error}</FieldError> : null}
+              </FieldGroup>
+            </div>
+            <DialogFooter className="mt-4 sm:justify-between">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => changeScreen("manage")}
+              >
+                Back
+              </Button>
+              <div className="flex flex-wrap gap-2">
+                {/* Tested against this machine without saving anything, so a
+                    typo costs a walk rather than a profile to clean up. */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void handleTestDraft()}
+                >
+                  {test.isPending ? <Spinner data-icon="inline-start" /> : null}
+                  Test walk
+                </Button>
+                <Button type="submit" disabled={busy}>
+                  {create.isPending ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : null}
+                  Create and bind
+                </Button>
+              </div>
+            </DialogFooter>
+          </form>
         ) : null}
 
         {screen === "edit" && selected ? (

@@ -146,6 +146,11 @@ export const serverInfoSchema = z.object({
   status: z.string(),
   mac: z.string(),
   ipv4: z.string(),
+  /**
+   * The network the address sits on. Nullish so a backend that predates the
+   * field still parses — the machine is polled the same either way.
+   */
+  subnet_name: z.string().nullish(),
   flavor: flavorInfoSchema,
 })
 export type ServerInfo = z.infer<typeof serverInfoSchema>

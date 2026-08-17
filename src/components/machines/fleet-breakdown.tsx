@@ -25,7 +25,7 @@ interface FleetBreakdownProps {
 const facets = Object.keys(FACET_LABELS) as FacetKey[]
 
 /**
- * How the OpenStack fleet splits by tenant, owner and flavor, with the
+ * How the OpenStack fleet splits by tenant, owner, subnet and flavor, with the
  * registered-here count against each group's total. Rows double as filters.
  */
 export function FleetBreakdown({
@@ -49,7 +49,7 @@ export function FleetBreakdown({
           {unregistered > 0 ? ` · ${unregistered} not monitored` : ""}
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {facets.map((facet) => (
           <div key={facet} className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">

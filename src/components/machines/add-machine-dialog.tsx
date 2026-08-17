@@ -69,6 +69,14 @@ interface AddMachineDialogProps {
 
 type Step = "target" | "credential" | "review"
 
+/**
+ * Fixed for the life of the dialog. The credential step has nothing to ask
+ * when nothing is being registered, but dropping it from the list made the
+ * wizard grow a step the moment an address was typed, which reads as the run
+ * getting longer rather than as a step becoming relevant.
+ */
+const STEPS: Step[] = ["target", "credential", "review"]
+
 const STEP_LABELS: Record<Step, string> = {
   target: "Machines",
   credential: "Credential",
@@ -162,11 +170,8 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   // view already knows about never reaches the backend.
   const needsCredentialStep = canRegister && canBind && registerCount > 0
 
-  const steps: Step[] = needsCredentialStep
-    ? ["target", "credential", "review"]
-    : ["target", "review"]
-  const index = Math.min(stepIndex, steps.length - 1)
-  const step = steps[index]
+  const index = Math.min(stepIndex, STEPS.length - 1)
+  const step = STEPS[index]
 
   // A saved profile is only an option when there is one to read: without
   // `credentials:read` the list is empty for a reason the user cannot fix from
@@ -268,6 +273,12 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     }
 
     if (step === "credential") {
+      // The step is always shown, so it is always walked through; with nothing
+      // to register there is nothing to validate and no answer to demand.
+      if (!needsCredentialStep) {
+        setError(null)
+        return true
+      }
       if (mode === "existing" && !credentialId) {
         setError("Pick a saved profile, or create one")
         return false
@@ -315,7 +326,7 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
         if (mode === "existing") {
           if (!credentialId) {
             setError("Pick a saved profile, or create one")
-            setStepIndex(steps.indexOf("credential"))
+            setStepIndex(STEPS.indexOf("credential"))
             return
           }
           savedCredentialId = credentialId
@@ -323,7 +334,7 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
           const { data } = parseCredentialDraft(draft)
           if (!data) {
             setError("Fix the highlighted fields")
-            setStepIndex(steps.indexOf("credential"))
+            setStepIndex(STEPS.indexOf("credential"))
             return
           }
           inlineCredential = data
@@ -556,7 +567,7 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
           </>
         ) : (
           <>
-            <Stepper steps={steps} index={index} />
+            <Stepper steps={STEPS} index={index} />
 
             <div className="max-h-[55vh] overflow-y-auto px-1">
               {step === "target" ? (
@@ -581,21 +592,33 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
               ) : null}
 
               {step === "credential" ? (
-                <CredentialStep
-                  mode={mode}
-                  onMode={(next) => {
-                    setCredentialMode(next)
-                    setError(null)
-                  }}
-                  canPickExisting={canPickExisting}
-                  credentials={savedProfiles}
-                  credentialId={credentialId}
-                  onCredentialId={setCredentialId}
-                  draft={draft}
-                  onDraft={setDraft}
-                  draftErrors={draftErrors}
-                  disabled={submitting}
-                />
+                needsCredentialStep ? (
+                  <CredentialStep
+                    mode={mode}
+                    onMode={(next) => {
+                      setCredentialMode(next)
+                      setError(null)
+                    }}
+                    canPickExisting={canPickExisting}
+                    credentials={savedProfiles}
+                    credentialId={credentialId}
+                    onCredentialId={setCredentialId}
+                    draft={draft}
+                    onDraft={setDraft}
+                    draftErrors={draftErrors}
+                    disabled={submitting}
+                  />
+                ) : (
+                  <IdleCredentialStep
+                    reason={
+                      registerCount === 0
+                        ? attached.length > 0
+                          ? "Nothing new is being registered, so the machines joining this view keep whatever credential they already hold."
+                          : "No machine is being registered yet. Go back and pick a server or type an address to bind a credential here."
+                        : "Binding a credential needs the credentials:write scope. These machines are registered without one and stay unpolled until an admin binds it."
+                    }
+                  />
+                )
               ) : null}
 
               {step === "review" ? (
@@ -951,6 +974,22 @@ function CredentialStep({
           idPrefix="new-credential"
         />
       ) : null}
+    </FieldGroup>
+  )
+}
+
+/**
+ * The credential step with nothing to ask: it keeps its place in the wizard so
+ * the stepper stays three steps long, and says why it is empty rather than
+ * looking like a form that failed to load.
+ */
+function IdleCredentialStep({ reason }: { reason: string }) {
+  return (
+    <FieldGroup>
+      <Field>
+        <FieldLabel>SNMP credential</FieldLabel>
+        <p className="text-sm text-muted-foreground">{reason}</p>
+      </Field>
     </FieldGroup>
   )
 }

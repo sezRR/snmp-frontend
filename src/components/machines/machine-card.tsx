@@ -28,6 +28,7 @@ import {
   ArrowUp,
   ArrowUpFromLine,
   Building2,
+  Network,
   User,
 } from "lucide-react"
 
@@ -95,6 +96,12 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
                 <User data-icon="inline-start" />
                 {machine.openstack.user_name}
               </Badge>
+              {machine.openstack.subnet_name ? (
+                <Badge variant="outline">
+                  <Network data-icon="inline-start" />
+                  {machine.openstack.subnet_name}
+                </Badge>
+              ) : null}
               <Badge variant="outline">{machine.openstack.flavor.name}</Badge>
               <Badge variant="secondary">{machine.openstack.status}</Badge>
             </span>

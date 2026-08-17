@@ -214,6 +214,7 @@ function MachineDetailPage() {
               <Fact label="Status" value={openstack.status} />
               <Fact label="Tenant" value={openstack.tenant_name} />
               <Fact label="User" value={openstack.user_name} />
+              <Fact label="Subnet" value={openstack.subnet_name ?? "unknown"} />
               <Fact label="Flavor" value={openstack.flavor.name} />
               <Fact label="vCPUs" value={String(openstack.flavor.vcpus)} />
               <Fact

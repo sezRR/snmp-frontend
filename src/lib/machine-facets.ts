@@ -1,31 +1,36 @@
 import type { Machine, ServerInfo } from "@/lib/api/types"
 
 // Machines are grouped by the OpenStack facts, since that is where tenant,
-// owner and flavor actually live. A machine OpenStack no longer knows about
-// still has to land somewhere, so it groups under "unknown".
+// owner, subnet and flavor actually live. A machine OpenStack no longer knows
+// about still has to land somewhere, so it groups under "unknown".
 
 export const ALL = "__all__"
 export const UNKNOWN = "unknown"
 
-export type FacetKey = "tenant" | "user" | "flavor"
+export type FacetKey = "tenant" | "user" | "subnet" | "flavor"
 
 export type MachineFilter = Record<FacetKey, string>
 
 export const EMPTY_FILTER: MachineFilter = {
   tenant: ALL,
   user: ALL,
+  subnet: ALL,
   flavor: ALL,
 }
 
 export const FACET_LABELS: Record<FacetKey, string> = {
   tenant: "Tenant",
   user: "User",
+  subnet: "Subnet",
   flavor: "Flavor",
 }
 
 export function serverFacet(server: ServerInfo, facet: FacetKey): string {
   if (facet === "tenant") return server.tenant_name
   if (facet === "user") return server.user_name
+  // A backend too old to report the subnet groups every server under
+  // "unknown" rather than having one invented for it.
+  if (facet === "subnet") return server.subnet_name ?? UNKNOWN
   return server.flavor.name
 }
 

@@ -4,6 +4,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -109,16 +110,23 @@ function LoginPage() {
         )}
       >
         <CardHeader>
-          <div className="mb-2 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <div className="mb-2 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground ring-1 ring-primary/20">
             <Activity className="size-4" />
           </div>
+          <div className="font-mono text-[0.625rem] tracking-[0.18em] text-muted-foreground uppercase">
+            SNMP Monitor
+          </div>
           <CardTitle>Sign in</CardTitle>
-          <CardDescription>
-            SNMP Monitor · OpenStack fleet metrics
-          </CardDescription>
+          <CardDescription>OpenStack fleet metrics</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit}>
+        {/* The form spans content and footer so the submit button can live in
+            the footer strip and still submit the fields above it. Laid out with
+            the card's own spacing variable, so the seam is invisible. */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-(--card-spacing)"
+        >
+          <CardContent>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="login-username">Username</FieldLabel>
@@ -151,17 +159,19 @@ function LoginPage() {
                   <AlertDescription>{failure}</AlertDescription>
                 </Alert>
               ) : null}
-              <Button
-                className={cn(shadow)}
-                type="submit"
-                disabled={login.isPending}
-              >
-                {login.isPending ? <Spinner data-icon="inline-start" /> : null}
-                Sign in
-              </Button>
             </FieldGroup>
-          </form>
-        </CardContent>
+          </CardContent>
+          <CardFooter>
+            <Button
+              className={cn(shadow, "w-full")}
+              type="submit"
+              disabled={login.isPending}
+            >
+              {login.isPending ? <Spinner data-icon="inline-start" /> : null}
+              Sign in
+            </Button>
+          </CardFooter>
+        </form>
       </Card>
     </main>
   )

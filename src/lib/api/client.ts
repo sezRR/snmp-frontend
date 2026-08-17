@@ -1,3 +1,4 @@
+import { reportResponseStatus, reportUnreachable } from "@/lib/api/reachability"
 import { tokenPairSchema } from "@/lib/api/types"
 import {
   accessTokenIsFresh,
@@ -107,16 +108,20 @@ async function exchangeRefreshToken(): Promise<string | null> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: session.refresh_token }),
     })
+    reportResponseStatus(response.status)
   } catch {
     // The network is down, not the session. Keeping it means the user is still
     // signed in when connectivity returns.
+    reportUnreachable()
     return null
   }
 
   if (!response.ok) {
-    // The backend refused the token: revoked, expired or already spent. There
-    // is nothing left to authenticate with, so the session goes.
-    clearSession()
+    // Only a refusal ends the session: the token is revoked, expired or already
+    // spent, and there is nothing left to authenticate with. Any other status
+    // is the backend having a bad day — a proxy answering 503 for a restarting
+    // API must not sign the user out on its behalf.
+    if (response.status === 401 || response.status === 403) clearSession()
     return null
   }
 
@@ -150,7 +155,7 @@ interface RequestOptions<T> {
   auth?: boolean
 }
 
-function send<T>(
+async function send<T>(
   path: string,
   { method = "GET", params, body, form }: RequestOptions<T>,
   token: string | null
@@ -167,7 +172,20 @@ function send<T>(
     payload = JSON.stringify(body)
   }
 
-  return fetch(apiUrl(path, params), { method, headers, body: payload })
+  // Every request doubles as evidence about whether the API is up at all, which
+  // is what puts the offline screen on screen and takes it off again.
+  try {
+    const response = await fetch(apiUrl(path, params), {
+      method,
+      headers,
+      body: payload,
+    })
+    reportResponseStatus(response.status)
+    return response
+  } catch (error) {
+    reportUnreachable()
+    throw error
+  }
 }
 
 async function request<T>(

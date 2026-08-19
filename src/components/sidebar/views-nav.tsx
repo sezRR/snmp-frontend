@@ -1,5 +1,10 @@
 import { useCloseOnNavigate } from "@/components/sidebar/use-close-on-navigate"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -58,13 +63,13 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
     if (openViewId === view.id) void navigate({ to: "/" })
   }
 
-  const handleToggle = () => {
+  const handleOpenChange = (nextOpen: boolean) => {
     if (!isMobile && state === "collapsed") {
       setOpen(true)
       onOpenChange(true)
       return
     }
-    onOpenChange(!open)
+    onOpenChange(nextOpen)
   }
 
   return (
@@ -72,42 +77,46 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
       <SidebarGroupContent>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Views"
-              isActive={openViewId !== undefined}
-              aria-expanded={open}
-              aria-controls="sidebar-views"
-              onClick={handleToggle}
+            <Collapsible
+              open={open}
+              onOpenChange={handleOpenChange}
+              className="contents"
             >
-              <LayoutGrid />
-              <span>Views</span>
-              <ChevronRight
-                className={cn(
-                  "ml-auto transition-transform duration-200",
-                  open && "rotate-90"
-                )}
-              />
-            </SidebarMenuButton>
-            <SidebarMenuAction
-              title="New view"
-              aria-label="New view"
-              onClick={openCreate}
-            >
-              <Plus />
-            </SidebarMenuAction>
+              <CollapsibleTrigger
+                render={
+                  <SidebarMenuButton
+                    tooltip="Views"
+                    isActive={openViewId !== undefined}
+                  />
+                }
+              >
+                <LayoutGrid />
+                <span>Views</span>
+                <ChevronRight
+                  className={cn(
+                    "ml-auto transition-transform duration-200 ease-[var(--ease-in-out)] motion-reduce:transition-none",
+                    open && "rotate-90"
+                  )}
+                />
+              </CollapsibleTrigger>
+              <SidebarMenuAction
+                title="New view"
+                aria-label="New view"
+                onClick={openCreate}
+              >
+                <Plus />
+              </SidebarMenuAction>
 
-            {open ? (
-              <SidebarMenuSub id="sidebar-views">
+              <CollapsibleContent
+                render={<SidebarMenuSub id="sidebar-views" />}
+              >
                 {views.length === 0 ? (
                   <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
                     No saved views
                   </SidebarMenuSubItem>
                 ) : (
                   views.map((view) => (
-                    <SidebarMenuSubItem
-                      key={view.id}
-                      className="group/menu-item relative"
-                    >
+                    <SidebarMenuSubItem key={view.id}>
                       <SidebarMenuSubButton
                         title={view.name}
                         className="pl-3"
@@ -130,7 +139,7 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
-                            <SidebarMenuAction showOnHover>
+                            <SidebarMenuAction showOnHover="menu-sub-item">
                               <MoreHorizontal />
                               <span className="sr-only">View actions</span>
                             </SidebarMenuAction>
@@ -158,8 +167,8 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
                     </SidebarMenuSubItem>
                   ))
                 )}
-              </SidebarMenuSub>
-            ) : null}
+              </CollapsibleContent>
+            </Collapsible>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroupContent>

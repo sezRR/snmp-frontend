@@ -5,6 +5,11 @@ import {
 } from "@/components/sidebar/machine-status-dot"
 import { useCloseOnNavigate } from "@/components/sidebar/use-close-on-navigate"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
@@ -82,31 +87,38 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
       <SidebarGroupContent>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Machines"
-              isActive={pathname.startsWith("/machines")}
-              render={<Link to="/machines" onClick={closeOnNavigate} />}
+            <Collapsible
+              open={open}
+              onOpenChange={onOpenChange}
+              className="contents"
             >
-              <Server />
-              <span>Machines</span>
-            </SidebarMenuButton>
-            <SidebarMenuAction
-              title={open ? "Collapse machines" : "Expand machines"}
-              aria-label={open ? "Collapse machines" : "Expand machines"}
-              aria-expanded={open}
-              aria-controls="sidebar-machines"
-              onClick={() => onOpenChange(!open)}
-            >
-              <ChevronRight
-                className={cn(
-                  "transition-transform duration-200",
-                  open && "rotate-90"
-                )}
-              />
-            </SidebarMenuAction>
+              <SidebarMenuButton
+                tooltip="Machines"
+                isActive={pathname.startsWith("/machines")}
+                render={<Link to="/machines" onClick={closeOnNavigate} />}
+              >
+                <Server />
+                <span>Machines</span>
+              </SidebarMenuButton>
+              <CollapsibleTrigger
+                render={
+                  <SidebarMenuAction
+                    title={open ? "Collapse machines" : "Expand machines"}
+                    aria-label={open ? "Collapse machines" : "Expand machines"}
+                  />
+                }
+              >
+                <ChevronRight
+                  className={cn(
+                    "transition-transform duration-200 ease-[var(--ease-in-out)] motion-reduce:transition-none",
+                    open && "rotate-90"
+                  )}
+                />
+              </CollapsibleTrigger>
 
-            {open ? (
-              <SidebarMenuSub id="sidebar-machines">
+              <CollapsibleContent
+                render={<SidebarMenuSub id="sidebar-machines" />}
+              >
                 {isPending ? (
                   <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
                     Loading machines...
@@ -124,10 +136,7 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                     const sample =
                       byMac[machine.mac] ?? latestByMac[machine.mac]
                     return (
-                      <SidebarMenuSubItem
-                        key={machine.mac}
-                        className="group/menu-item relative"
-                      >
+                      <SidebarMenuSubItem key={machine.mac}>
                         <SidebarMenuSubButton
                           title={`${machineName(machine)}\nIP: ${machine.ipv4}\nMAC: ${machine.mac}`}
                           className="pl-3"
@@ -154,7 +163,7 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                           includeViewAction={false}
                           onDeregistered={closeOnNavigate}
                           trigger={
-                            <SidebarMenuAction showOnHover>
+                            <SidebarMenuAction showOnHover="menu-sub-item">
                               <MoreHorizontal />
                               <span className="sr-only">Machine actions</span>
                             </SidebarMenuAction>
@@ -178,8 +187,8 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>
                 ) : null}
-              </SidebarMenuSub>
-            ) : null}
+              </CollapsibleContent>
+            </Collapsible>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroupContent>

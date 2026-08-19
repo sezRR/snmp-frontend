@@ -32,6 +32,8 @@
   --chart-4: #eda100;
   --chart-5: #1baf7a;
   --radius: 0.625rem;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --sidebar: oklch(0.986 0.002 67.8);
   --sidebar-foreground: oklch(0.147 0.004 49.3);
   --sidebar-primary: oklch(0.666 0.179 58.318);

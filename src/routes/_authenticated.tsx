@@ -1,7 +1,6 @@
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AccountMenu } from "@/components/auth/account-menu"
-import { FaultInjectorButton } from "@/components/dev/fault-injector"
 import { ThemeToggle } from "@/components/theme-toggle"
 import {
   SidebarInset,
@@ -79,8 +78,6 @@ function AuthedLayout() {
           <Outlet />
         </main>
       </SidebarInset>
-      {/* Statically false in a production build, so this is dropped. */}
-      {import.meta.env.DEV && <FaultInjectorButton />}
     </SidebarProvider>
   )
 }

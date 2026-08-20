@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/chart"
 import { withBucketGaps } from "@/lib/live-buckets"
 import type { ChartPoint } from "@/lib/metrics"
-import { TIME_RANGES, type TimeRangeKey } from "@/lib/time-range"
 import { useMemo } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
@@ -34,12 +33,13 @@ interface MetricsLineChartProps {
   description?: string
   data: ChartPoint[]
   series: SeriesDef[]
-  range: TimeRangeKey
+  intervalMs: number
+  rangeMs: number
   valueFormatter: (value: number) => string
   yDomain?: [number, number]
 }
 
-function tickFormatterFor(range: TimeRangeKey) {
+function tickFormatterFor(rangeMs: number) {
   // 24-hour, like every other timestamp in the app: axis ticks are read at a
   // glance and an AM/PM suffix is both wider and easier to misread.
   const timeOnly: Intl.DateTimeFormatOptions = {
@@ -54,7 +54,7 @@ function tickFormatterFor(range: TimeRangeKey) {
     minute: "2-digit",
     hour12: false,
   }
-  const options = range === "7d" || range === "24h" ? dayAndTime : timeOnly
+  const options = rangeMs >= 24 * 60 * 60 * 1000 ? dayAndTime : timeOnly
   return (value: string) => new Date(value).toLocaleString(undefined, options)
 }
 
@@ -93,7 +93,8 @@ export function MetricsLineChart({
   description,
   data,
   series,
-  range,
+  intervalMs,
+  rangeMs,
   valueFormatter,
   yDomain,
 }: MetricsLineChartProps) {
@@ -105,13 +106,16 @@ export function MetricsLineChart({
     series.map((s) => [s.dataKey, s.label])
   )
 
-  const xTickFormatter = tickFormatterFor(range)
+  const xTickFormatter = tickFormatterFor(rangeMs)
 
   // Missing buckets are what an outage looks like in the data, so they are
   // materialised here rather than at every call site.
   const points = useMemo(
-    () => withBucketGaps(data, TIME_RANGES[range].intervalMs),
-    [data, range]
+    () => withBucketGaps(data, intervalMs),
+    [data, intervalMs]
+  )
+  const hasData = points.some((point) =>
+    series.some((item) => typeof point[item.dataKey] === "number")
   )
 
   return (
@@ -121,59 +125,65 @@ export function MetricsLineChart({
         {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-[280px] w-full">
-          <AreaChart data={points} margin={{ left: 4, right: 12 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="ts"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={48}
-              tickFormatter={xTickFormatter}
-            />
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              tickMargin={4}
-              width={56}
-              domain={yDomain ?? ["auto", "auto"]}
-              tickFormatter={(value: number) => valueFormatter(value)}
-            />
-            <ChartTooltip
-              cursor={false}
-              content={
-                <ChartTooltipContent
-                  labelFormatter={metricTooltipLabelFormatter}
-                  formatter={metricTooltipFormatter(
-                    seriesLabels,
-                    valueFormatter
-                  )}
-                />
-              }
-            />
-            {series.map((s) => (
-              <Area
-                key={s.dataKey}
-                dataKey={s.dataKey}
-                type="monotone"
-                stroke={`var(--color-${s.dataKey})`}
-                fill={`var(--color-${s.dataKey})`}
-                fillOpacity={0.1}
-                strokeWidth={2}
-                dot={isolatedPointDot(
-                  points,
-                  s.dataKey,
-                  `var(--color-${s.dataKey})`
-                )}
-                activeDot={{ r: 3 }}
-                connectNulls={false}
-                isAnimationActive={false}
+        {hasData ? (
+          <ChartContainer config={chartConfig} className="h-[280px] w-full">
+            <AreaChart data={points} margin={{ left: 4, right: 12 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="ts"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={48}
+                tickFormatter={xTickFormatter}
               />
-            ))}
-            <ChartLegend content={<ChartLegendContent />} />
-          </AreaChart>
-        </ChartContainer>
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={4}
+                width={56}
+                domain={yDomain ?? ["auto", "auto"]}
+                tickFormatter={(value: number) => valueFormatter(value)}
+              />
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={metricTooltipLabelFormatter}
+                    formatter={metricTooltipFormatter(
+                      seriesLabels,
+                      valueFormatter
+                    )}
+                  />
+                }
+              />
+              {series.map((s) => (
+                <Area
+                  key={s.dataKey}
+                  dataKey={s.dataKey}
+                  type="monotone"
+                  stroke={`var(--color-${s.dataKey})`}
+                  fill={`var(--color-${s.dataKey})`}
+                  fillOpacity={0.1}
+                  strokeWidth={2}
+                  dot={isolatedPointDot(
+                    points,
+                    s.dataKey,
+                    `var(--color-${s.dataKey})`
+                  )}
+                  activeDot={{ r: 3 }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              ))}
+              <ChartLegend content={<ChartLegendContent />} />
+            </AreaChart>
+          </ChartContainer>
+        ) : (
+          <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+            No data in this time range.
+          </div>
+        )}
       </CardContent>
     </Card>
   )

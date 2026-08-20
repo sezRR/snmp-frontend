@@ -644,23 +644,40 @@ function metricsAt(mac: string, timeMs: number) {
 
 const round = (value: number) => Number(value.toFixed(2))
 
-/** Parses the Postgres interval strings the stats endpoint accepts. */
-function intervalMs(bucket: string): number {
-  const match = /^\s*(\d+(?:\.\d+)?)\s*(second|minute|hour|day)s?\s*$/i.exec(
-    bucket
+const STATS_BUCKETS = [
+  { name: "30s", seconds: 30 },
+  { name: "1m", seconds: 60 },
+  { name: "5m", seconds: 5 * 60 },
+  { name: "15m", seconds: 15 * 60 },
+  { name: "1h", seconds: 60 * 60 },
+  { name: "6h", seconds: 6 * 60 * 60 },
+  { name: "1d", seconds: 24 * 60 * 60 },
+  { name: "7d", seconds: 7 * 24 * 60 * 60 },
+] as const
+
+const TARGET_STATS_POINTS = 750
+
+function statsSource(fromMs: number): {
+  name: "metrics" | "metrics_1m" | "metrics_1h"
+  minSeconds: number
+} {
+  const ageMs = Date.now() - fromMs
+  if (ageMs <= 2 * 86_400_000) return { name: "metrics", minSeconds: 30 }
+  if (ageMs <= 90 * 86_400_000) {
+    return { name: "metrics_1m", minSeconds: 60 }
+  }
+  return { name: "metrics_1h", minSeconds: 60 * 60 }
+}
+
+function effectiveStatsBucket(spanMs: number, minSeconds: number) {
+  const wantedSeconds = Math.max(
+    spanMs / 1000 / TARGET_STATS_POINTS,
+    minSeconds
   )
-  if (!match) return 300_000
-  const amount = Number(match[1])
-  const unit = match[2].toLowerCase()
-  const scale =
-    unit === "second"
-      ? 1000
-      : unit === "minute"
-        ? 60_000
-        : unit === "hour"
-          ? 3_600_000
-          : 86_400_000
-  return amount * scale
+  return (
+    STATS_BUCKETS.find((bucket) => bucket.seconds >= wantedSeconds) ??
+    STATS_BUCKETS[STATS_BUCKETS.length - 1]
+  )
 }
 
 function pollableMacs(filter: string[] | null): string[] {
@@ -677,8 +694,13 @@ function visibleAt(mac: string, timeMs: number): boolean {
   return floor === undefined || timeMs > floor
 }
 
-function json(res: ServerResponse, status: number, body: unknown) {
-  res.writeHead(status, { "Content-Type": "application/json" })
+function json(
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+  headers: Record<string, string> = {}
+) {
+  res.writeHead(status, { "Content-Type": "application/json", ...headers })
   res.end(JSON.stringify(body))
 }
 
@@ -1729,15 +1751,30 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
           }
 
           if (path === "/metrics/stats" && method === "GET") {
-            const hours = Number(url.searchParams.get("hours") ?? "1")
-            const step = intervalMs(
-              url.searchParams.get("bucket") ?? "5 minutes"
-            )
-            const end = Math.floor(Date.now() / step) * step
-            const start = end - hours * 3_600_000
+            const from = url.searchParams.get("from")
+            const to = url.searchParams.get("to")
+            const start = from ? Date.parse(from) : Number.NaN
+            const end = to ? Date.parse(to) : Number.NaN
+            if (
+              !from ||
+              !to ||
+              !Number.isFinite(start) ||
+              !Number.isFinite(end) ||
+              end <= start ||
+              macFilter.length === 0 ||
+              macFilter.length > 10
+            ) {
+              return json(res, 422, {
+                detail: "from, to, and 1-10 mac parameters are required",
+              })
+            }
+            const source = statsSource(start)
+            const bucket = effectiveStatsBucket(end - start, source.minSeconds)
+            const step = bucket.seconds * 1000
+            const firstBucket = Math.floor(start / step) * step
             const rows = []
             for (const mac of pollableMacs(macFilter)) {
-              for (let ts = start; ts <= end; ts += step) {
+              for (let ts = firstBucket; ts < end; ts += step) {
                 if (!visibleAt(mac, ts)) continue
                 const sample = metricsAt(mac, ts)
                 const disk = sample.metrics.disk[0]
@@ -1785,7 +1822,10 @@ export function mockSnmpApi({ prefix = "/api" } = {}): Plugin {
                 })
               }
             }
-            return json(res, 200, rows)
+            return json(res, 200, rows, {
+              "X-Metrics-Bucket": bucket.name,
+              "X-Metrics-Source": source.name,
+            })
           }
 
           if (path === "/metrics/counts" && method === "GET") {

@@ -5,7 +5,7 @@ import { DiskIoCard } from "@/components/metrics/disk-io-card"
 import { LiveStatusIndicator } from "@/components/metrics/live-status-indicator"
 import { MetricsLineChart } from "@/components/metrics/metrics-line-chart"
 import { RadialMetricCard } from "@/components/metrics/radial-metric-card"
-import { TimeRangePicker } from "@/components/metrics/time-range-picker"
+import { TimeRangeSelector } from "@/components/metrics/time-range-selector"
 import {
   MachineStatusDot,
   machineHealth,
@@ -28,11 +28,7 @@ import {
   formatUsage,
 } from "@/lib/format"
 import { mergeLiveIntoPoints } from "@/lib/live-buckets"
-import {
-  type MetricsSnapshot,
-  normalizeSample,
-  statsRowToPoint,
-} from "@/lib/metrics"
+import { normalizeSample, statsRowToPoint } from "@/lib/metrics"
 import {
   collectorMachineHealth,
   useCollectorStatusQuery,
@@ -41,10 +37,14 @@ import { machineName, machineQueryOptions } from "@/lib/queries/machines"
 import {
   latestMetricsQueryOptions,
   metricStatsQueryOptions,
-  recentSamplesQueryOptions,
   samplesByMac,
 } from "@/lib/queries/metrics"
-import { TIME_RANGES, type TimeRangeKey, timeRangeKeys } from "@/lib/time-range"
+import {
+  DEFAULT_TIME_RANGE,
+  isLiveTimeRange,
+  isTimeExpression,
+  resolveTimeRange,
+} from "@/lib/time-range"
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
@@ -52,23 +52,36 @@ import { z } from "zod"
 /** Points kept in the throughput sparkline on the bandwidth card. */
 const SPARKLINE_POINTS = 60
 
-const hasMetricValue = (...values: (number | null | undefined)[]): boolean =>
-  values.some((value) => typeof value === "number")
-
-const searchSchema = z.object({
-  range: z
-    .enum(timeRangeKeys as [TimeRangeKey, ...TimeRangeKey[]])
-    .default("1h"),
-})
+const searchSchema = z
+  .object({
+    from: z
+      .string()
+      .trim()
+      .refine(isTimeExpression)
+      .default(DEFAULT_TIME_RANGE.from),
+    to: z
+      .string()
+      .trim()
+      .refine(isTimeExpression)
+      .default(DEFAULT_TIME_RANGE.to),
+  })
+  .refine((range) => {
+    try {
+      resolveTimeRange(range)
+      return true
+    } catch {
+      return false
+    }
+  }, "From must be before To")
 
 export const Route = createFileRoute("/_authenticated/machines/$mac")({
   validateSearch: searchSchema,
-  loaderDeps: ({ search }) => ({ range: search.range }),
+  loaderDeps: ({ search }) => ({ from: search.from, to: search.to }),
   loader: ({ context, params, deps }) =>
     Promise.all([
       context.queryClient.ensureQueryData(machineQueryOptions(params.mac)),
       context.queryClient.ensureQueryData(
-        metricStatsQueryOptions(params.mac, deps.range)
+        metricStatsQueryOptions(params.mac, deps)
       ),
     ]),
   pendingMs: 0,
@@ -78,39 +91,16 @@ export const Route = createFileRoute("/_authenticated/machines/$mac")({
 
 function MachineDetailPage() {
   const { mac } = Route.useParams()
-  const { range } = Route.useSearch()
+  const range = Route.useSearch()
   const navigate = Route.useNavigate()
 
   const { data: machine } = useSuspenseQuery(machineQueryOptions(mac))
-  const { data: stats } = useSuspenseQuery(metricStatsQueryOptions(mac, range))
+  const { data: statsResult, refetch: refetchStats } = useSuspenseQuery(
+    metricStatsQueryOptions(mac, range)
+  )
   const { data: latest } = useQuery(latestMetricsQueryOptions())
   const { data: collector } = useCollectorStatusQuery()
   const { latest: liveSample, history, status } = useMachineLiveMetrics(mac)
-
-  // The aggregate reads its own jsonb paths, so any metric group can be empty
-  // even when raw samples carry it. Omitted fields count as missing too.
-  const statsHaveUsage = stats.some((row) =>
-    hasMetricValue(
-      row.cpu_usage_percent_avg,
-      row.ram_used_percent_avg,
-      row.disk_used_percent_avg
-    )
-  )
-  const statsHaveNet = stats.some((row) =>
-    hasMetricValue(row.net_rx_bps_avg, row.net_tx_bps_avg)
-  )
-  const statsHaveDiskIo = stats.some((row) =>
-    hasMetricValue(
-      row.disk_read_bps_avg,
-      row.disk_write_bps_avg,
-      row.disk_read_iops_avg,
-      row.disk_write_iops_avg
-    )
-  )
-  const { data: recent } = useQuery({
-    ...recentSamplesQueryOptions(mac),
-    enabled: !statsHaveUsage || !statsHaveNet || !statsHaveDiskIo,
-  })
 
   const fallbackSample = samplesByMac(latest ?? [])[mac]
   const sample = liveSample ?? fallbackSample
@@ -127,28 +117,24 @@ function MachineDetailPage() {
     .map((entry) => normalizeSample(entry, machine))
     .slice(-SPARKLINE_POINTS)
 
-  // Historic buckets plus the live SSE tail, aggregated into the same interval
-  // so the charts keep moving between refetches.
+  const liveRange = isLiveTimeRange(range)
+  const windowStart = Date.parse(statsResult.window.from)
+  const chartLiveSnapshots = liveRange
+    ? liveSnapshots.filter((entry) => Date.parse(entry.ts) >= windowStart)
+    : []
+
+  // Historic buckets plus the live SSE tail, aggregated into the effective
+  // interval selected by the backend.
   const chartPoints = mergeLiveIntoPoints(
-    stats.map(statsRowToPoint),
-    liveSnapshots,
-    TIME_RANGES[range].intervalMs
+    statsResult.rows.map(statsRowToPoint),
+    chartLiveSnapshots,
+    statsResult.intervalMs
   )
-
-  // When the aggregate has no values for a metric group, raw samples still may
-  // carry them, so the corresponding chart is drawn from those instead.
-  const samplePoints = mergeLiveIntoPoints(
-    [],
-    mergeSnapshots(
-      (recent ?? []).map((entry) => normalizeSample(entry, machine)),
-      liveSnapshots
-    ),
-    TIME_RANGES[range].intervalMs
-  )
-
-  const usagePoints = statsHaveUsage ? chartPoints : samplePoints
-  const bandwidthPoints = statsHaveNet ? chartPoints : samplePoints
-  const diskIoPoints = statsHaveDiskIo ? chartPoints : samplePoints
+  const rangeMs =
+    Date.parse(statsResult.window.to) - Date.parse(statsResult.window.from)
+  const chartDescription = liveRange
+    ? "Bucket average · live"
+    : "Bucket average"
 
   const openstack = machine.openstack
 
@@ -255,14 +241,19 @@ function MachineDetailPage() {
         </Card>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">History</h2>
-        <TimeRangePicker
-          value={range}
-          onChange={(next) => {
-            // resetScroll would jump back to the top of the page on every
-            // range change, losing the chart the user is looking at.
-            void navigate({ search: { range: next }, resetScroll: false })
+        <TimeRangeSelector
+          key={`${range.from}\0${range.to}`}
+          from={range.from}
+          to={range.to}
+          onApply={(next) => {
+            // resetScroll would jump back to the top on every applied window,
+            // losing the chart the user is looking at.
+            void navigate({ search: next, resetScroll: false })
+            if (next.from === range.from && next.to === range.to) {
+              void refetchStats()
+            }
           }}
         />
       </div>
@@ -270,9 +261,10 @@ function MachineDetailPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <MetricsLineChart
           title="CPU, RAM & disk"
-          description="Bucket average · live"
-          data={usagePoints}
-          range={range}
+          description={chartDescription}
+          data={chartPoints}
+          intervalMs={statsResult.intervalMs}
+          rangeMs={rangeMs}
           valueFormatter={formatPercent}
           yDomain={[0, 100]}
           series={[
@@ -295,9 +287,10 @@ function MachineDetailPage() {
         />
         <MetricsLineChart
           title="Bandwidth"
-          description="Bucket average · live"
-          data={bandwidthPoints}
-          range={range}
+          description={chartDescription}
+          data={chartPoints}
+          intervalMs={statsResult.intervalMs}
+          rangeMs={rangeMs}
           valueFormatter={formatBps}
           series={[
             {
@@ -314,9 +307,10 @@ function MachineDetailPage() {
         />
         <MetricsLineChart
           title="Disk throughput"
-          description="Bucket average · live"
-          data={diskIoPoints}
-          range={range}
+          description={chartDescription}
+          data={chartPoints}
+          intervalMs={statsResult.intervalMs}
+          rangeMs={rangeMs}
           valueFormatter={formatBytesRate}
           series={[
             {
@@ -333,9 +327,10 @@ function MachineDetailPage() {
         />
         <MetricsLineChart
           title="Disk operations"
-          description="Bucket average · live"
-          data={diskIoPoints}
-          range={range}
+          description={chartDescription}
+          data={chartPoints}
+          intervalMs={statsResult.intervalMs}
+          rangeMs={rangeMs}
           valueFormatter={formatIops}
           series={[
             {
@@ -353,24 +348,6 @@ function MachineDetailPage() {
       </div>
     </div>
   )
-}
-
-/**
- * Raw samples come back newest-first and overlap the live tail, so both are
- * keyed by timestamp — the live copy wins — and returned oldest-first, which
- * is the order the charts plot in.
- */
-function mergeSnapshots(
-  fetched: MetricsSnapshot[],
-  live: MetricsSnapshot[]
-): MetricsSnapshot[] {
-  const byTs = new Map<number, MetricsSnapshot>()
-  for (const snapshot of [...fetched, ...live]) {
-    byTs.set(Date.parse(snapshot.ts), snapshot)
-  }
-  return [...byTs.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([, snapshot]) => snapshot)
 }
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -405,9 +382,9 @@ function MachineDetailSkeleton() {
         ))}
       </div>
       <OpenStackCardSkeleton />
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <Skeleton className="h-5 w-16" />
-        <Skeleton className="h-8 w-44" />
+        <Skeleton className="h-14 w-96 max-w-full" />
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (

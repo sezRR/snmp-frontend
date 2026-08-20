@@ -7,7 +7,12 @@ import {
   purgeResultSchema,
 } from "@/lib/api/types"
 import { SCOPES, useHasScope } from "@/lib/auth/scopes"
-import { TIME_RANGES, type TimeRangeKey } from "@/lib/time-range"
+import {
+  type TimeRange,
+  bucketDurationMs,
+  isRelativeTime,
+  resolveTimeRange,
+} from "@/lib/time-range"
 import {
   queryOptions,
   useMutation,
@@ -41,32 +46,42 @@ export const latestMetricsQueryOptions = () =>
     refetchInterval: 60_000,
   })
 
-export const metricStatsQueryOptions = (
-  mac: string | undefined,
-  range: TimeRangeKey
-) =>
-  queryOptions({
-    queryKey: [...metricsQueryKey, "stats", mac ?? "all", range] as const,
-    queryFn: () => {
-      const { hours, bucket } = TIME_RANGES[range]
-      return api.get("/metrics/stats", {
-        params: { hours, bucket, mac },
+export const metricStatsQueryOptions = (mac: string, range: TimeRange) => {
+  const { from, to } = range
+  return queryOptions({
+    queryKey: [...metricsQueryKey, "stats", mac, from, to] as const,
+    queryFn: async () => {
+      const window = resolveTimeRange({ from, to })
+      const result = await api.getWithResponse("/metrics/stats", {
+        params: {
+          from: window.from.toISOString(),
+          to: window.to.toISOString(),
+          mac,
+        },
         schema: statsListSchema,
       })
+      const bucket = result.response.headers.get("X-Metrics-Bucket")
+      if (!bucket) {
+        throw new Error("Metrics response is missing X-Metrics-Bucket")
+      }
+      return {
+        rows: result.data,
+        intervalMs: bucketDurationMs(bucket),
+        window: {
+          from: window.from.toISOString(),
+          to: window.to.toISOString(),
+        },
+      }
     },
     staleTime: 60_000,
-    // Each refetch re-anchors the window on now, so stale buckets fall off the
-    // left edge; the SSE tail covers the gap between refetches.
-    refetchInterval: clamp(TIME_RANGES[range].intervalMs, 30_000, 300_000),
+    // Relative windows are resolved again on each request. Absolute windows are
+    // snapshots and do not need polling after their first successful read.
+    refetchInterval: (query) =>
+      isRelativeTime(to)
+        ? clamp(query.state.data?.intervalMs ?? 60_000, 30_000, 300_000)
+        : false,
   })
-
-export const recentSamplesQueryOptions = (mac: string, limit = 200) =>
-  queryOptions({
-    queryKey: [...metricsQueryKey, "samples", mac, limit] as const,
-    queryFn: () =>
-      api.get("/metrics", { params: { mac, limit }, schema: sampleListSchema }),
-    staleTime: 30_000,
-  })
+}
 
 export const metricCountsQueryOptions = () =>
   queryOptions({

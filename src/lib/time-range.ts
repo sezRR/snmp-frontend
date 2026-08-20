@@ -1,46 +1,136 @@
-const MINUTE = 60_000
+const SECOND = 1000
+const MINUTE = 60 * SECOND
 const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
 
-// `hours` and `bucket` map straight onto /metrics/stats — the bucket string is
-// a Postgres interval handed to time_bucket, so it must stay in that syntax.
-export const TIME_RANGES = {
-  "15m": {
-    label: "15 min",
-    hours: 0.25,
-    bucket: "30 seconds",
-    intervalMs: 30_000,
-    durationMs: 15 * MINUTE,
-  },
-  "1h": {
-    label: "1 hour",
-    hours: 1,
-    bucket: "1 minute",
-    intervalMs: MINUTE,
-    durationMs: HOUR,
-  },
-  "6h": {
-    label: "6 hours",
-    hours: 6,
-    bucket: "5 minutes",
-    intervalMs: 5 * MINUTE,
-    durationMs: 6 * HOUR,
-  },
-  "24h": {
-    label: "24 hours",
-    hours: 24,
-    bucket: "15 minutes",
-    intervalMs: 15 * MINUTE,
-    durationMs: 24 * HOUR,
-  },
-  "7d": {
-    label: "7 days",
-    hours: 168,
-    bucket: "1 hour",
-    intervalMs: HOUR,
-    durationMs: 7 * 24 * HOUR,
-  },
-} as const
+const RELATIVE_TIME = /^now(?:([+-])(\d+)([smhdwMy]))?$/
+const ABSOLUTE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
+const BUCKET_DURATION = /^(\d+(?:\.\d+)?)(s|m|h|d)$/
 
-export type TimeRangeKey = keyof typeof TIME_RANGES
+export interface TimeRange {
+  from: string
+  to: string
+}
 
-export const timeRangeKeys = Object.keys(TIME_RANGES) as TimeRangeKey[]
+export const DEFAULT_TIME_RANGE = {
+  from: "now-1h",
+  to: "now",
+} as const satisfies TimeRange
+
+export const TIME_EXPRESSION_EXAMPLE = "Use now, now-1h, or YYYY-MM-DD HH:mm."
+
+function addCalendarMonths(date: Date, amount: number): Date {
+  const result = new Date(date)
+  const day = result.getDate()
+  result.setDate(1)
+  result.setMonth(result.getMonth() + amount)
+  const lastDay = new Date(
+    result.getFullYear(),
+    result.getMonth() + 1,
+    0
+  ).getDate()
+  result.setDate(Math.min(day, lastDay))
+  return result
+}
+
+function offsetNow(now: Date, amount: number, unit: string): Date {
+  if (unit === "M") return addCalendarMonths(now, amount)
+  if (unit === "y") return addCalendarMonths(now, amount * 12)
+
+  const result = new Date(now)
+  if (unit === "d" || unit === "w") {
+    result.setDate(result.getDate() + amount * (unit === "w" ? 7 : 1))
+    return result
+  }
+
+  const scale = unit === "s" ? SECOND : unit === "m" ? MINUTE : HOUR
+  return new Date(result.getTime() + amount * scale)
+}
+
+function parseAbsoluteTime(match: RegExpExecArray): Date {
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] =
+    match
+  const year = Number(yearText)
+  const month = Number(monthText) - 1
+  const day = Number(dayText)
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  const second = Number(secondText ?? "0")
+
+  const result = new Date(0)
+  result.setFullYear(year, month, day)
+  result.setHours(hour, minute, second, 0)
+
+  if (
+    result.getFullYear() !== year ||
+    result.getMonth() !== month ||
+    result.getDate() !== day ||
+    result.getHours() !== hour ||
+    result.getMinutes() !== minute ||
+    result.getSeconds() !== second
+  ) {
+    throw new Error(TIME_EXPRESSION_EXAMPLE)
+  }
+  return result
+}
+
+/** Resolve one Zabbix-style expression against a shared notion of now. */
+export function resolveTimeExpression(value: string, now = new Date()): Date {
+  const expression = value.trim()
+  const relative = RELATIVE_TIME.exec(expression)
+  if (relative) {
+    const [, sign, amountText, unit] = relative
+    if (!sign || !amountText || !unit) return new Date(now)
+    const direction = sign === "+" ? 1 : -1
+    const result = offsetNow(now, direction * Number(amountText), unit)
+    if (Number.isNaN(result.getTime())) throw new Error(TIME_EXPRESSION_EXAMPLE)
+    return result
+  }
+
+  const absolute = ABSOLUTE_TIME.exec(expression)
+  if (absolute) return parseAbsoluteTime(absolute)
+  throw new Error(TIME_EXPRESSION_EXAMPLE)
+}
+
+export function resolveTimeRange(
+  range: TimeRange,
+  now = new Date()
+): { from: Date; to: Date } {
+  const from = resolveTimeExpression(range.from, now)
+  const to = resolveTimeExpression(range.to, now)
+  if (from >= to) throw new Error("From must be before To.")
+  return { from, to }
+}
+
+export function isTimeExpression(value: string): boolean {
+  try {
+    resolveTimeExpression(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** A relative To keeps moving; only exactly `now` receives the SSE tail. */
+export function isRelativeTime(value: string): boolean {
+  return RELATIVE_TIME.test(value.trim())
+}
+
+export function isLiveTimeRange(range: TimeRange): boolean {
+  return range.to.trim() === "now"
+}
+
+/** Parse the effective preset returned in X-Metrics-Bucket. */
+export function bucketDurationMs(value: string): number {
+  const match = BUCKET_DURATION.exec(value.trim())
+  if (!match) throw new Error(`Invalid X-Metrics-Bucket header: ${value}`)
+  const amount = Number(match[1])
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`Invalid X-Metrics-Bucket header: ${value}`)
+  }
+  const unit = match[2]
+  const scale =
+    unit === "s" ? SECOND : unit === "m" ? MINUTE : unit === "h" ? HOUR : DAY
+  return amount * scale
+}

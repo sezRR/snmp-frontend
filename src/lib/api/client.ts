@@ -155,6 +155,11 @@ interface RequestOptions<T> {
   auth?: boolean
 }
 
+export interface ApiResponse<T> {
+  data: T
+  response: Response
+}
+
 async function send<T>(
   path: string,
   { method = "GET", params, body, form }: RequestOptions<T>,
@@ -188,10 +193,10 @@ async function send<T>(
   }
 }
 
-async function request<T>(
+async function requestWithResponse<T>(
   path: string,
   options: RequestOptions<T> = {}
-): Promise<T> {
+): Promise<ApiResponse<T>> {
   const { auth = true, schema } = options
 
   let response = await send(
@@ -219,10 +224,22 @@ async function request<T>(
   }
 
   // 204 on DELETE /machines/{mac} and POST /auth/logout
-  if (response.status === 204) return undefined as T
+  if (response.status === 204) {
+    return { data: undefined as T, response }
+  }
 
   const payload: unknown = await response.json()
-  return schema ? schema.parse(payload) : (payload as T)
+  return {
+    data: schema ? schema.parse(payload) : (payload as T),
+    response,
+  }
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions<T> = {}
+): Promise<T> {
+  return (await requestWithResponse(path, options)).data
 }
 
 export const api = {
@@ -230,6 +247,10 @@ export const api = {
     path: string,
     options?: Omit<RequestOptions<T>, "method" | "body" | "form">
   ) => request<T>(path, options),
+  getWithResponse: <T>(
+    path: string,
+    options?: Omit<RequestOptions<T>, "method" | "body" | "form">
+  ) => requestWithResponse<T>(path, options),
   post: <T>(path: string, options?: Omit<RequestOptions<T>, "method">) =>
     request<T>(path, { ...options, method: "POST" }),
   patch: <T>(path: string, options?: Omit<RequestOptions<T>, "method">) =>

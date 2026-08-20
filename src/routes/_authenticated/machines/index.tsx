@@ -37,7 +37,7 @@ import { Server } from "lucide-react"
 export const Route = createFileRoute("/_authenticated/machines/")({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(machinesQueryOptions()),
-  pendingComponent: () => <Skeleton className="h-64 rounded-xl" />,
+  pendingComponent: MachinesSkeleton,
   component: MachinesPage,
 })
 
@@ -137,6 +137,46 @@ function MachinesPage() {
           </CardContent>
         </Card>
       )}
+    </div>
+  )
+}
+
+function MachinesSkeleton() {
+  return (
+    <div
+      className="flex flex-1 flex-col gap-4"
+      aria-label="Loading machines"
+      aria-busy="true"
+    >
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-7 w-24" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-32" />
+        </div>
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-[22px] w-40" />
+          <Skeleton className="h-5 w-48 max-w-full" />
+        </CardHeader>
+        <CardContent className="flex flex-col">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index}>
+              {index > 0 ? <Separator /> : null}
+              <div className="flex items-center gap-3 px-2 py-3">
+                <Skeleton className="size-2" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <Skeleton className="h-5 w-40 max-w-full" />
+                  <Skeleton className="h-4 w-80 max-w-full" />
+                </div>
+                <Skeleton className="hidden h-5 w-20 sm:block" />
+                <Skeleton className="size-7" />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
     </div>
   )
 }

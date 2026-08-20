@@ -3,6 +3,7 @@ import { DeregisterMachinesDialog } from "@/components/machines/deregister-machi
 import { FleetSummary } from "@/components/machines/fleet-summary"
 import { MachineGrid } from "@/components/machines/machine-grid"
 import { MachineToolbar } from "@/components/machines/machine-toolbar"
+import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Empty,
   EmptyDescription,
@@ -16,6 +17,7 @@ import {
   EMPTY_FILTER,
   type MachineFilter,
   filterMachines,
+  isFiltered,
 } from "@/lib/machine-facets"
 import {
   DEFAULT_SORT,
@@ -48,6 +50,8 @@ function DashboardPage() {
   const samples = useMachineSamples()
 
   const [filter, setFilter] = React.useState<MachineFilter>(EMPTY_FILTER)
+  const [search, setSearch] = React.useState("")
+  const deferredSearch = React.useDeferredValue(search)
   const [sort, setSort] = React.useState<SortKey>(DEFAULT_SORT)
   const [direction, setDirection] = React.useState<SortDirection>(
     defaultDirection(DEFAULT_SORT)
@@ -72,7 +76,7 @@ function DashboardPage() {
   }
 
   const visible = sortMachines(
-    filterMachines(machines, filter),
+    filterMachines(machines, filter, deferredSearch),
     sort,
     direction,
     samples
@@ -93,6 +97,7 @@ function DashboardPage() {
         servers={servers ?? []}
         filter={filter}
         onFilterChange={setFilter}
+        search={{ value: search, onChange: setSearch }}
         sort={sort}
         direction={direction}
         onSortChange={(nextSort, nextDirection) => {
@@ -107,10 +112,17 @@ function DashboardPage() {
             <EmptyMedia variant="icon">
               <Server />
             </EmptyMedia>
-            <EmptyTitle>No machines match these filters</EmptyTitle>
+            <EmptyTitle>
+              {deferredSearch.trim()
+                ? "No machines match your search"
+                : "No machines match these filters"}
+            </EmptyTitle>
             <EmptyDescription>
-              Clear the tenant, user or flavor filter to see the rest of the
-              fleet.
+              {deferredSearch.trim()
+                ? `Try another name, IP address, or MAC address${
+                    isFiltered(filter) ? ", or clear the filters" : ""
+                  }.`
+                : "Clear the tenant, user, subnet or flavor filter to see the rest of the fleet."}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -123,18 +135,123 @@ function DashboardPage() {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      className="flex flex-col gap-4"
+      aria-label="Loading dashboard"
+      aria-busy="true"
+    >
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-7 w-28" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-32" />
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-20 rounded-xl" />
+          <DashboardStatSkeleton key={index} />
         ))}
       </div>
-      <Skeleton className="h-40 rounded-xl" />
+      <DashboardToolbarSkeleton />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-44 rounded-xl" />
+          <MachineCardSkeleton key={index} />
         ))}
       </div>
     </div>
+  )
+}
+
+function DashboardStatSkeleton() {
+  return (
+    <Card className="gap-0 py-4">
+      <CardContent className="flex flex-col gap-0.5">
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-8 w-16" />
+        <Skeleton className="h-4 w-28 max-w-full" />
+      </CardContent>
+    </Card>
+  )
+}
+
+function DashboardToolbarSkeleton() {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Skeleton className="h-8 w-full sm:w-64" />
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-4 w-28" />
+        <div className="ml-auto flex items-center gap-2">
+          <Skeleton className="h-4 w-12" />
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="size-8" />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-8 w-44" />
+        ))}
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-[22px] w-36" />
+          <Skeleton className="h-5 w-72 max-w-full" />
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="flex flex-col gap-1">
+              <Skeleton className="h-4 w-20" />
+              {Array.from({ length: 3 }).map((__, rowIndex) => (
+                <Skeleton key={rowIndex} className="h-7 w-full" />
+              ))}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function MachineCardSkeleton() {
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-2" />
+          <Skeleton className="h-[22px] w-40" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-5 w-20" />
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-5 w-20" />
+          </div>
+        </div>
+        <CardAction>
+          <Skeleton className="size-7" />
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="flex flex-col gap-0.5">
+              <Skeleton className="h-4 w-16" />
+              {index < 3 ? (
+                <>
+                  <Skeleton className="h-5 w-20 max-w-full" />
+                  <Skeleton className="h-4 w-24 max-w-full" />
+                </>
+              ) : (
+                <Skeleton className="h-10 w-24 max-w-full" />
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

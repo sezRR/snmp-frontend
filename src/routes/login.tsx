@@ -117,11 +117,10 @@ function LoginPage() {
           <div className="mb-2 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground ring-1 ring-primary/20">
             <Activity className="size-4" />
           </div>
-          <div className="font-mono text-[0.625rem] tracking-[0.18em] text-muted-foreground uppercase">
-            SNMP Monitor
-          </div>
           <CardTitle>Sign in</CardTitle>
-          <CardDescription>OpenStack fleet metrics</CardDescription>
+          <CardDescription>
+            SNMP Telemetry Observability Platform
+          </CardDescription>
         </CardHeader>
         {/* The form spans content and footer so the submit button can live in
             the footer strip and still submit the fields above it. Laid out with

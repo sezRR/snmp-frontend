@@ -44,14 +44,26 @@ export function isFiltered(filter: MachineFilter): boolean {
 
 export function filterMachines(
   machines: Machine[],
-  filter: MachineFilter
+  filter: MachineFilter,
+  query = ""
 ): Machine[] {
-  return machines.filter((machine) =>
-    (Object.keys(FACET_LABELS) as FacetKey[]).every(
+  const normalizedQuery = query.trim().toLowerCase()
+
+  return machines.filter((machine) => {
+    const matchesFacets = (Object.keys(FACET_LABELS) as FacetKey[]).every(
       (facet) =>
         filter[facet] === ALL || machineFacet(machine, facet) === filter[facet]
     )
-  )
+    if (!matchesFacets || normalizedQuery === "") return matchesFacets
+
+    return [
+      machine.label,
+      machine.openstack?.name,
+      machine.ipv4,
+      machine.mac,
+      machine.mac.replaceAll(":", "-"),
+    ].some((value) => value?.toLowerCase().includes(normalizedQuery))
+  })
 }
 
 export interface FacetCount {

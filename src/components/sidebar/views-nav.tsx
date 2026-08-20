@@ -23,7 +23,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { ViewDialog } from "@/components/views/view-dialog"
-import { cn } from "@/lib/utils"
 import { type View, deleteView, useViews } from "@/lib/views"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import {
@@ -93,10 +92,7 @@ export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
                 <LayoutGrid />
                 <span>Views</span>
                 <ChevronRight
-                  className={cn(
-                    "ml-auto transition-transform duration-200 ease-[var(--ease-in-out)] motion-reduce:transition-none",
-                    open && "rotate-90"
-                  )}
+                  className={open ? "ml-auto rotate-90" : "ml-auto"}
                 />
               </CollapsibleTrigger>
               <SidebarMenuAction

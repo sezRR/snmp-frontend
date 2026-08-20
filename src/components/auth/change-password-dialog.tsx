@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/dialog"
 import {
   Field,
-  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -124,10 +123,6 @@ export function ChangePasswordDialog({
                 disabled={change.isPending}
                 onChange={(event) => setNext(event.target.value)}
               />
-              <FieldDescription>
-                Whatever the backend's policy allows. It is the one that enforces
-                it.
-              </FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="password-confirm">

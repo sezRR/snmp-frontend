@@ -52,6 +52,7 @@ function ChartContainer({
   config,
   initialDimension = INITIAL_DIMENSION,
   debounce = RESIZE_DEBOUNCE_MS,
+  ref,
   ...props
 }: React.ComponentProps<"div"> & {
   config: ChartConfig
@@ -66,22 +67,104 @@ function ChartContainer({
 }) {
   const uniqueId = React.useId()
   const chartId = `chart-${id ?? uniqueId.replace(/:/g, "")}`
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [dimensionStore] = React.useState(() => {
+    let dimension = initialDimension
+    const listeners = new Set<() => void>()
+
+    return {
+      getSnapshot: () => dimension,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener)
+        return () => {
+          listeners.delete(listener)
+        }
+      },
+      update: (next: typeof dimension) => {
+        if (
+          dimension.width === next.width &&
+          dimension.height === next.height
+        ) {
+          return
+        }
+
+        dimension = next
+        listeners.forEach((listener) => listener())
+      },
+    }
+  })
+  const dimension = React.useSyncExternalStore(
+    dimensionStore.subscribe,
+    dimensionStore.getSnapshot,
+    dimensionStore.getSnapshot
+  )
+
+  React.useImperativeHandle(ref, () => containerRef.current!)
+
+  React.useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined
+
+    const updateDimension = (width: number, height: number) => {
+      const next = {
+        width: Math.round(width),
+        height: Math.round(height),
+      }
+
+      // Suspense hides the mounted route with display:none. Keep the last valid
+      // size instead of letting a transient 0x0 observation remove the chart.
+      if (next.width <= 0 || next.height <= 0) {
+        return
+      }
+
+      const commit = () => {
+        dimensionStore.update(next)
+      }
+
+      if (debounce > 0) {
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(commit, debounce)
+      } else {
+        commit()
+      }
+    }
+
+    const initialRect = container.getBoundingClientRect()
+    updateDimension(initialRect.width, initialRect.height)
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) {
+        updateDimension(entry.contentRect.width, entry.contentRect.height)
+      }
+    })
+    observer.observe(container)
+
+    return () => {
+      observer.disconnect()
+      clearTimeout(resizeTimer)
+    }
+  }, [debounce, dimensionStore])
 
   return (
     <ChartContext.Provider value={{ config }}>
       <div
+        ref={containerRef}
         data-slot="chart"
         data-chart={chartId}
         className={cn(
-          "flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
+          "flex min-h-0 min-w-0 aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
           className
         )}
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
         <RechartsPrimitive.ResponsiveContainer
-          initialDimension={initialDimension}
-          debounce={debounce}
+          width={dimension.width}
+          height={dimension.height}
         >
           {children}
         </RechartsPrimitive.ResponsiveContainer>

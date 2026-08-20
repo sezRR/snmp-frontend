@@ -28,12 +28,10 @@ import {
 } from "@/lib/queries/admin"
 import { machineName, machinesQueryOptions } from "@/lib/queries/machines"
 import { latestMetricsQueryOptions, samplesByMac } from "@/lib/queries/metrics"
-import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useParams } from "@tanstack/react-router"
 import { ChevronRight, MoreHorizontal, Server } from "lucide-react"
 
-const MACHINE_PREVIEW_LIMIT = 12
 const machineCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
@@ -48,7 +46,6 @@ interface MachinesNavProps {
   onOpenChange: (open: boolean) => void
 }
 
-/** Fleet navigation stays bounded so machines cannot crowd out other pages. */
 export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
   const { pathname } = useLocation()
   const { mac: openMac } = useParams({ strict: false })
@@ -71,16 +68,6 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
   const health = collectorMachineHealth(collector)
   const latestByMac = samplesByMac(latest ?? [])
   const sorted = [...(machines ?? [])].sort(compareMachines)
-  const visible = sorted.slice(0, MACHINE_PREVIEW_LIMIT)
-  const activeMachine = sorted.find((machine) => machine.mac === openMac)
-  if (
-    activeMachine &&
-    !visible.some((machine) => machine.mac === activeMachine.mac)
-  ) {
-    visible.push(activeMachine)
-    visible.sort(compareMachines)
-  }
-  const remaining = sorted.length - visible.length
 
   return (
     <SidebarGroup>
@@ -108,12 +95,7 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                   />
                 }
               >
-                <ChevronRight
-                  className={cn(
-                    "transition-transform duration-200 ease-[var(--ease-in-out)] motion-reduce:transition-none",
-                    open && "rotate-90"
-                  )}
-                />
+                <ChevronRight className={open ? "rotate-90" : undefined} />
               </CollapsibleTrigger>
 
               <CollapsibleContent
@@ -127,12 +109,12 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                   <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-destructive">
                     Machines unavailable
                   </SidebarMenuSubItem>
-                ) : visible.length === 0 ? (
+                ) : sorted.length === 0 ? (
                   <SidebarMenuSubItem className="py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
                     No machines registered
                   </SidebarMenuSubItem>
                 ) : (
-                  visible.map((machine) => {
+                  sorted.map((machine) => {
                     const sample =
                       byMac[machine.mac] ?? latestByMac[machine.mac]
                     return (
@@ -173,20 +155,6 @@ export function MachinesNav({ open, onOpenChange }: MachinesNavProps) {
                     )
                   })
                 )}
-
-                {remaining > 0 ? (
-                  <SidebarMenuSubItem>
-                    <SidebarMenuSubButton
-                      className="pl-3"
-                      render={<Link to="/machines" onClick={closeOnNavigate} />}
-                    >
-                      <MoreHorizontal />
-                      <span>
-                        {remaining} more machine{remaining === 1 ? "" : "s"}
-                      </span>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                ) : null}
               </CollapsibleContent>
             </Collapsible>
           </SidebarMenuItem>

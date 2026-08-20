@@ -52,6 +52,9 @@ import { z } from "zod"
 /** Points kept in the throughput sparkline on the bandwidth card. */
 const SPARKLINE_POINTS = 60
 
+const hasMetricValue = (...values: (number | null | undefined)[]): boolean =>
+  values.some((value) => typeof value === "number")
+
 const searchSchema = z.object({
   range: z
     .enum(timeRangeKeys as [TimeRangeKey, ...TimeRangeKey[]])
@@ -84,22 +87,29 @@ function MachineDetailPage() {
   const { data: collector } = useCollectorStatusQuery()
   const { latest: liveSample, history, status } = useMachineLiveMetrics(mac)
 
-  // The stats aggregate reads its own jsonb paths, so it can come back without
-  // network columns even when the samples carry them. Only then is the raw
-  // sample list worth fetching, to keep the bandwidth history from being blank.
-  const statsHaveNet = stats.some(
-    (row) => row.net_rx_bps_avg !== null || row.net_tx_bps_avg !== null
+  // The aggregate reads its own jsonb paths, so any metric group can be empty
+  // even when raw samples carry it. Omitted fields count as missing too.
+  const statsHaveUsage = stats.some((row) =>
+    hasMetricValue(
+      row.cpu_usage_percent_avg,
+      row.ram_used_percent_avg,
+      row.disk_used_percent_avg
+    )
   )
-  const statsHaveDiskIo = stats.some(
-    (row) =>
-      row.disk_read_bps_avg !== null ||
-      row.disk_write_bps_avg !== null ||
-      row.disk_read_iops_avg !== null ||
-      row.disk_write_iops_avg !== null
+  const statsHaveNet = stats.some((row) =>
+    hasMetricValue(row.net_rx_bps_avg, row.net_tx_bps_avg)
+  )
+  const statsHaveDiskIo = stats.some((row) =>
+    hasMetricValue(
+      row.disk_read_bps_avg,
+      row.disk_write_bps_avg,
+      row.disk_read_iops_avg,
+      row.disk_write_iops_avg
+    )
   )
   const { data: recent } = useQuery({
     ...recentSamplesQueryOptions(mac),
-    enabled: !statsHaveNet || !statsHaveDiskIo,
+    enabled: !statsHaveUsage || !statsHaveNet || !statsHaveDiskIo,
   })
 
   const fallbackSample = samplesByMac(latest ?? [])[mac]
@@ -125,8 +135,8 @@ function MachineDetailPage() {
     TIME_RANGES[range].intervalMs
   )
 
-  // Same fallback for both: when the aggregate has no column for a metric, the
-  // raw samples still carry it, so the chart is drawn from those instead.
+  // When the aggregate has no values for a metric group, raw samples still may
+  // carry them, so the corresponding chart is drawn from those instead.
   const samplePoints = mergeLiveIntoPoints(
     [],
     mergeSnapshots(
@@ -136,6 +146,7 @@ function MachineDetailPage() {
     TIME_RANGES[range].intervalMs
   )
 
+  const usagePoints = statsHaveUsage ? chartPoints : samplePoints
   const bandwidthPoints = statsHaveNet ? chartPoints : samplePoints
   const diskIoPoints = statsHaveDiskIo ? chartPoints : samplePoints
 
@@ -260,7 +271,7 @@ function MachineDetailPage() {
         <MetricsLineChart
           title="CPU, RAM & disk"
           description="Bucket average · live"
-          data={chartPoints}
+          data={usagePoints}
           range={range}
           valueFormatter={formatPercent}
           yDomain={[0, 100]}
@@ -373,18 +384,89 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 function MachineDetailSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
-      <Skeleton className="h-8 w-64" />
+    <div
+      className="flex flex-col gap-4"
+      aria-label="Loading machine details"
+      aria-busy="true"
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <Skeleton className="size-2.5" />
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-5 w-32" />
+        <div className="ml-auto flex items-center gap-2">
+          <Skeleton className="h-5 w-20" />
+          <Skeleton className="size-7" />
+        </div>
+      </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-56 rounded-xl" />
+          <MetricCardSkeleton key={index} />
         ))}
+      </div>
+      <OpenStackCardSkeleton />
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-8 w-44" />
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-80 rounded-xl" />
+          <ChartCardSkeleton key={index} />
         ))}
       </div>
     </div>
+  )
+}
+
+function MetricCardSkeleton() {
+  return (
+    <Card className="h-full gap-2">
+      <CardHeader>
+        <Skeleton className="h-[22px] w-20" />
+        <Skeleton className="h-5 w-28" />
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col justify-center gap-2">
+        <Skeleton className="mx-auto size-40 rounded-full" />
+        <div className="flex flex-col items-center gap-0.5">
+          <Skeleton className="h-5 w-28" />
+          <Skeleton className="h-4 w-36 max-w-full" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function OpenStackCardSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-[22px] w-24" />
+        <Skeleton className="h-5 w-72 max-w-full" />
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {Array.from({ length: 9 }).map((_, index) => (
+            <div key={index} className="flex flex-col gap-0.5">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-5 w-24 max-w-full" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ChartCardSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-[22px] w-36" />
+        <Skeleton className="h-5 w-32" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-[280px] w-full" />
+      </CardContent>
+    </Card>
   )
 }

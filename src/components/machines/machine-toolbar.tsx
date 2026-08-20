@@ -2,6 +2,8 @@ import { FleetBreakdown } from "@/components/machines/fleet-breakdown"
 import { MachineFilters } from "@/components/machines/machine-filters"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -49,6 +51,10 @@ interface MachineToolbarProps {
   onSortChange: (sort: SortKey, direction: SortDirection) => void
   matched: number
   showBreakdown?: boolean
+  search?: {
+    value: string
+    onChange: (value: string) => void
+  }
 }
 
 export function MachineToolbar({
@@ -61,6 +67,7 @@ export function MachineToolbar({
   onSortChange,
   matched,
   showBreakdown = true,
+  search,
 }: MachineToolbarProps) {
   const open = useLocalStore(panelOpenStore)
   const activeFilters = Object.values(filter).filter(
@@ -74,6 +81,20 @@ export function MachineToolbar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
+        {search ? (
+          <Field className="w-full sm:w-64">
+            <FieldLabel htmlFor="machine-search" className="sr-only">
+              Search machines
+            </FieldLabel>
+            <Input
+              id="machine-search"
+              type="search"
+              placeholder="Search name, IP, or MAC..."
+              value={search.value}
+              onChange={(event) => search.onChange(event.target.value)}
+            />
+          </Field>
+        ) : null}
         <Button
           variant="outline"
           aria-expanded={open}

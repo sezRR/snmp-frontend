@@ -133,7 +133,9 @@ function UsersPage() {
           ) : null}
         </CardHeader>
         <CardContent>
-          {usersQuery.isPending ? <UsersSkeleton /> : null}
+          {usersQuery.isPending ? (
+            <UsersSkeleton canWrite={canWrite} canReadRoles={canReadRoles} />
+          ) : null}
 
           {usersQuery.isError ? (
             <Alert variant="destructive">
@@ -218,17 +220,40 @@ function UsersPage() {
   )
 }
 
-function UsersSkeleton() {
+function UsersSkeleton({
+  canWrite,
+  canReadRoles,
+}: {
+  canWrite: boolean
+  canReadRoles: boolean
+}) {
   return (
-    <div className="flex flex-col gap-4" aria-label="Loading users">
+    <div className="flex flex-col" aria-label="Loading users" aria-busy="true">
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="flex items-center gap-3 py-2">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <Skeleton className="h-4 w-36" />
-            <Skeleton className="h-5 w-52 max-w-full" />
+        <React.Fragment key={index}>
+          {index > 0 ? <Separator /> : null}
+          <div className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Skeleton className="h-5 w-36" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Skeleton className="h-5 w-20" />
+                <Skeleton className="h-5 w-24" />
+              </div>
+            </div>
+            <Skeleton className="h-5 w-32" />
+            {canWrite ? (
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                {canReadRoles ? <Skeleton className="h-7 w-20" /> : null}
+                <Skeleton className="h-7 w-28" />
+                <Skeleton className="h-7 w-32" />
+                <Skeleton className="h-7 w-20" />
+              </div>
+            ) : null}
           </div>
-          <Skeleton className="hidden h-7 w-28 sm:block" />
-        </div>
+        </React.Fragment>
       ))}
     </div>
   )

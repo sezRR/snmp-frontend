@@ -9,18 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
-import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
-import { Route as AuthedRolesRouteImport } from './routes/_authed/roles'
-import { Route as AuthedUsersRouteImport } from './routes/_authed/users'
-import { Route as AuthedMachinesIndexRouteImport } from './routes/_authed/machines/index'
-import { Route as AuthedMachinesMacRouteImport } from './routes/_authed/machines/$mac'
-import { Route as AuthedViewsViewIdRouteImport } from './routes/_authed/views/$viewId'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedRolesRouteImport } from './routes/_authenticated/roles'
+import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
+import { Route as AuthenticatedMachinesIndexRouteImport } from './routes/_authenticated/machines/index'
+import { Route as AuthenticatedMachinesMacRouteImport } from './routes/_authenticated/machines/$mac'
+import { Route as AuthenticatedViewsViewIdRouteImport } from './routes/_authenticated/views/$viewId'
 
-const AuthedRoute = AuthedRouteImport.update({
-  id: '/_authed',
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -28,73 +28,76 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthedIndexRoute = AuthedIndexRouteImport.update({
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AuthedRoute,
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthedAdminRoute = AuthedAdminRouteImport.update({
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => AuthedRoute,
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthedRolesRoute = AuthedRolesRouteImport.update({
+const AuthenticatedRolesRoute = AuthenticatedRolesRouteImport.update({
   id: '/roles',
   path: '/roles',
-  getParentRoute: () => AuthedRoute,
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthedUsersRoute = AuthedUsersRouteImport.update({
+const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
   id: '/users',
   path: '/users',
-  getParentRoute: () => AuthedRoute,
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthedMachinesIndexRoute = AuthedMachinesIndexRouteImport.update({
-  id: '/machines/',
-  path: '/machines/',
-  getParentRoute: () => AuthedRoute,
-} as any)
-const AuthedMachinesMacRoute = AuthedMachinesMacRouteImport.update({
-  id: '/machines/$mac',
-  path: '/machines/$mac',
-  getParentRoute: () => AuthedRoute,
-} as any)
-const AuthedViewsViewIdRoute = AuthedViewsViewIdRouteImport.update({
-  id: '/views/$viewId',
-  path: '/views/$viewId',
-  getParentRoute: () => AuthedRoute,
-} as any)
+const AuthenticatedMachinesIndexRoute =
+  AuthenticatedMachinesIndexRouteImport.update({
+    id: '/machines/',
+    path: '/machines/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMachinesMacRoute =
+  AuthenticatedMachinesMacRouteImport.update({
+    id: '/machines/$mac',
+    path: '/machines/$mac',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedViewsViewIdRoute =
+  AuthenticatedViewsViewIdRouteImport.update({
+    id: '/views/$viewId',
+    path: '/views/$viewId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthedIndexRoute
+  '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
-  '/admin': typeof AuthedAdminRoute
-  '/roles': typeof AuthedRolesRoute
-  '/users': typeof AuthedUsersRoute
-  '/machines/$mac': typeof AuthedMachinesMacRoute
-  '/views/$viewId': typeof AuthedViewsViewIdRoute
-  '/machines/': typeof AuthedMachinesIndexRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/roles': typeof AuthenticatedRolesRoute
+  '/users': typeof AuthenticatedUsersRoute
+  '/machines/$mac': typeof AuthenticatedMachinesMacRoute
+  '/views/$viewId': typeof AuthenticatedViewsViewIdRoute
+  '/machines/': typeof AuthenticatedMachinesIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/admin': typeof AuthedAdminRoute
-  '/roles': typeof AuthedRolesRoute
-  '/users': typeof AuthedUsersRoute
-  '/': typeof AuthedIndexRoute
-  '/machines/$mac': typeof AuthedMachinesMacRoute
-  '/views/$viewId': typeof AuthedViewsViewIdRoute
-  '/machines': typeof AuthedMachinesIndexRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/roles': typeof AuthenticatedRolesRoute
+  '/users': typeof AuthenticatedUsersRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/machines/$mac': typeof AuthenticatedMachinesMacRoute
+  '/views/$viewId': typeof AuthenticatedViewsViewIdRoute
+  '/machines': typeof AuthenticatedMachinesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/_authed': typeof AuthedRouteWithChildren
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
-  '/_authed/admin': typeof AuthedAdminRoute
-  '/_authed/roles': typeof AuthedRolesRoute
-  '/_authed/users': typeof AuthedUsersRoute
-  '/_authed/': typeof AuthedIndexRoute
-  '/_authed/machines/$mac': typeof AuthedMachinesMacRoute
-  '/_authed/views/$viewId': typeof AuthedViewsViewIdRoute
-  '/_authed/machines/': typeof AuthedMachinesIndexRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/roles': typeof AuthenticatedRolesRoute
+  '/_authenticated/users': typeof AuthenticatedUsersRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/machines/$mac': typeof AuthenticatedMachinesMacRoute
+  '/_authenticated/views/$viewId': typeof AuthenticatedViewsViewIdRoute
+  '/_authenticated/machines/': typeof AuthenticatedMachinesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -119,29 +122,29 @@ export interface FileRouteTypes {
     | '/machines'
   id:
     | '__root__'
-    | '/_authed'
+    | '/_authenticated'
     | '/login'
-    | '/_authed/admin'
-    | '/_authed/roles'
-    | '/_authed/users'
-    | '/_authed/'
-    | '/_authed/machines/$mac'
-    | '/_authed/views/$viewId'
-    | '/_authed/machines/'
+    | '/_authenticated/admin'
+    | '/_authenticated/roles'
+    | '/_authenticated/users'
+    | '/_authenticated/'
+    | '/_authenticated/machines/$mac'
+    | '/_authenticated/views/$viewId'
+    | '/_authenticated/machines/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthedRoute: typeof AuthedRouteWithChildren
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_authed': {
-      id: '/_authed'
+    '/_authenticated': {
+      id: '/_authenticated'
       path: ''
       fullPath: '/'
-      preLoaderRoute: typeof AuthedRouteImport
+      preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -151,83 +154,84 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authed/': {
-      id: '/_authed/'
+    '/_authenticated/': {
+      id: '/_authenticated/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof AuthedIndexRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/_authed/admin': {
-      id: '/_authed/admin'
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
       path: '/admin'
       fullPath: '/admin'
-      preLoaderRoute: typeof AuthedAdminRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/_authed/roles': {
-      id: '/_authed/roles'
+    '/_authenticated/roles': {
+      id: '/_authenticated/roles'
       path: '/roles'
       fullPath: '/roles'
-      preLoaderRoute: typeof AuthedRolesRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedRolesRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/_authed/users': {
-      id: '/_authed/users'
+    '/_authenticated/users': {
+      id: '/_authenticated/users'
       path: '/users'
       fullPath: '/users'
-      preLoaderRoute: typeof AuthedUsersRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedUsersRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/_authed/machines/': {
-      id: '/_authed/machines/'
+    '/_authenticated/machines/': {
+      id: '/_authenticated/machines/'
       path: '/machines'
       fullPath: '/machines/'
-      preLoaderRoute: typeof AuthedMachinesIndexRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedMachinesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/_authed/machines/$mac': {
-      id: '/_authed/machines/$mac'
+    '/_authenticated/machines/$mac': {
+      id: '/_authenticated/machines/$mac'
       path: '/machines/$mac'
       fullPath: '/machines/$mac'
-      preLoaderRoute: typeof AuthedMachinesMacRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedMachinesMacRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/_authed/views/$viewId': {
-      id: '/_authed/views/$viewId'
+    '/_authenticated/views/$viewId': {
+      id: '/_authenticated/views/$viewId'
       path: '/views/$viewId'
       fullPath: '/views/$viewId'
-      preLoaderRoute: typeof AuthedViewsViewIdRouteImport
-      parentRoute: typeof AuthedRoute
+      preLoaderRoute: typeof AuthenticatedViewsViewIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
 
-interface AuthedRouteChildren {
-  AuthedAdminRoute: typeof AuthedAdminRoute
-  AuthedRolesRoute: typeof AuthedRolesRoute
-  AuthedUsersRoute: typeof AuthedUsersRoute
-  AuthedIndexRoute: typeof AuthedIndexRoute
-  AuthedMachinesMacRoute: typeof AuthedMachinesMacRoute
-  AuthedViewsViewIdRoute: typeof AuthedViewsViewIdRoute
-  AuthedMachinesIndexRoute: typeof AuthedMachinesIndexRoute
+interface AuthenticatedRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedRolesRoute: typeof AuthenticatedRolesRoute
+  AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedMachinesMacRoute: typeof AuthenticatedMachinesMacRoute
+  AuthenticatedViewsViewIdRoute: typeof AuthenticatedViewsViewIdRoute
+  AuthenticatedMachinesIndexRoute: typeof AuthenticatedMachinesIndexRoute
 }
 
-const AuthedRouteChildren: AuthedRouteChildren = {
-  AuthedAdminRoute: AuthedAdminRoute,
-  AuthedRolesRoute: AuthedRolesRoute,
-  AuthedUsersRoute: AuthedUsersRoute,
-  AuthedIndexRoute: AuthedIndexRoute,
-  AuthedMachinesMacRoute: AuthedMachinesMacRoute,
-  AuthedViewsViewIdRoute: AuthedViewsViewIdRoute,
-  AuthedMachinesIndexRoute: AuthedMachinesIndexRoute,
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedRolesRoute: AuthenticatedRolesRoute,
+  AuthenticatedUsersRoute: AuthenticatedUsersRoute,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedMachinesMacRoute: AuthenticatedMachinesMacRoute,
+  AuthenticatedViewsViewIdRoute: AuthenticatedViewsViewIdRoute,
+  AuthenticatedMachinesIndexRoute: AuthenticatedMachinesIndexRoute,
 }
 
-const AuthedRouteWithChildren =
-  AuthedRoute._addFileChildren(AuthedRouteChildren)
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
-  AuthedRoute: AuthedRouteWithChildren,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport

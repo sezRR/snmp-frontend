@@ -32,7 +32,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Server } from "lucide-react"
 import * as React from "react"
 
-export const Route = createFileRoute("/_authed/")({
+export const Route = createFileRoute("/_authenticated/")({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(machinesQueryOptions()),

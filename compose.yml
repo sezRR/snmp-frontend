@@ -1,0 +1,31 @@
+services:
+  frontend-dev:
+    build:
+      context: .
+      target: development
+    env_file:
+      - .env
+    ports:
+      - "${FRONTEND_DEV_PORT:-5173}:5173"
+    volumes:
+      - .:/app
+      - frontend-node-modules:/app/node_modules
+    command: >-
+      sh -c "pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0"
+    init: true
+
+  frontend-prod:
+    profiles:
+      - production
+    build:
+      context: .
+      target: runtime
+      args:
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL-}"
+        VITE_API_PREFIX: "${VITE_API_PREFIX-/api}"
+    ports:
+      - "${FRONTEND_PROD_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  frontend-node-modules:

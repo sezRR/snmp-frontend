@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -10,7 +10,7 @@ import {
 import PixelBlast from "@/components/ui/pixel-blast/pixel-blast-background"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation, useRouter } from "@tanstack/react-router"
 import {
   ArrowLeft,
   CloudAlert,
@@ -174,13 +174,19 @@ export function RetryButton({
 }
 
 /** A route threw something the page below could not handle. */
-export function RouteErrorScreen({
-  error,
-  reset,
-}: {
-  error: Error
-  reset?: () => void
-}) {
+export function RouteErrorScreen({ error }: { error: Error }) {
+  const router = useRouter()
+  const [reloading, setReloading] = React.useState(false)
+
+  const reload = () => {
+    if (reloading) return
+    setReloading(true)
+    void router.invalidate({ sync: true }).then(
+      () => setReloading(false),
+      () => setReloading(false)
+    )
+  }
+
   return (
     <ErrorScreen
       eyebrow="Unhandled error"
@@ -190,17 +196,20 @@ export function RouteErrorScreen({
       detail={error.message || String(error)}
       actions={
         <>
-          {reset ? (
-            <RetryButton onRetry={reset}>Reload page</RetryButton>
-          ) : null}
-          <Button
-            className={cn(shadow, "flex-1")}
-            variant="outline"
-            render={<Link to="/" />}
+          <RetryButton busy={reloading} onRetry={reload}>
+            Reload page
+          </RetryButton>
+          <Link
+            to="/"
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              shadow,
+              "flex-1"
+            )}
           >
             <ArrowLeft data-icon="inline-start" />
             Dashboard
-          </Button>
+          </Link>
         </>
       }
     />
@@ -222,14 +231,17 @@ export function NotFoundScreen() {
       tone="neutral"
       detail={pathname}
       actions={
-        <Button
-          className={cn(shadow, "flex-1")}
-          variant="outline"
-          render={<Link to="/" />}
+        <Link
+          to="/"
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            shadow,
+            "flex-1"
+          )}
         >
           <ArrowLeft data-icon="inline-start" />
           Back to the dashboard
-        </Button>
+        </Link>
       }
     />
   )

@@ -12,7 +12,7 @@ interface RouterContext {
 /**
  * Everything that has to exist on both sides of the sign-in boundary: the
  * backend gate, the toaster, and the devtools. The application shell lives in
- * the `_authed` layout instead, so the login page is not framed by a sidebar
+ * the `_authenticated` layout instead, so the login page is not framed by a sidebar
  * full of navigation the visitor cannot use yet.
  */
 function RootLayout() {
@@ -21,7 +21,7 @@ function RootLayout() {
       <BackendGate>
         <Outlet />
       </BackendGate>
-      <Toaster />
+      <Toaster position="bottom-right" />
       {/* Statically false in a production build, so all of this is dropped. */}
       {import.meta.env.DEV && (
         <>

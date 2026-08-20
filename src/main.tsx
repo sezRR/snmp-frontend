@@ -25,9 +25,7 @@ const router = createRouter({
   defaultPreloadStaleTime: 0,
   // The same screen the backend gate uses, so a thrown route and a missing URL
   // fail in the application's own handwriting rather than the router's.
-  defaultErrorComponent: ({ error, reset }) => (
-    <RouteErrorScreen error={error} reset={reset} />
-  ),
+  defaultErrorComponent: ({ error }) => <RouteErrorScreen error={error} />,
   defaultNotFoundComponent: () => <NotFoundScreen />,
 })
 

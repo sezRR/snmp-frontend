@@ -20,7 +20,6 @@ import {
 import { SCOPES, useScopes } from "@/lib/auth/scopes"
 import { Link, useLocation } from "@tanstack/react-router"
 import { Activity, ShieldCheck, Users, Wrench } from "lucide-react"
-import * as React from "react"
 
 const navItems = [
   { title: "Admin", to: "/admin", icon: Wrench, scope: SCOPES.adminRead },
@@ -28,43 +27,14 @@ const navItems = [
   { title: "Roles", to: "/roles", icon: ShieldCheck, scope: SCOPES.rolesRead },
 ] as const
 
-interface RouteSectionOverrides {
-  pathname: string
-  values: Partial<Record<SidebarSection, boolean>>
-}
-
 export function AppSidebar() {
   const { pathname } = useLocation()
   const closeOnNavigate = useCloseOnNavigate()
   const sections = useSidebarSections()
-  const [routeOverrides, setRouteOverrides] =
-    React.useState<RouteSectionOverrides>(() => ({ pathname, values: {} }))
   const scopes = useScopes()
   const visibleItems = navItems.filter((item) => scopes.includes(item.scope))
 
-  if (routeOverrides.pathname !== pathname) {
-    setRouteOverrides({ pathname, values: {} })
-  }
-
-  const sectionOpen = (section: SidebarSection) => {
-    const override =
-      routeOverrides.pathname === pathname
-        ? routeOverrides.values[section]
-        : undefined
-    if (override !== undefined) return override
-
-    const routeIsActive = pathname.startsWith(`/${section}`)
-    return routeIsActive || sections[section]
-  }
-
   const handleSectionOpenChange = (section: SidebarSection, open: boolean) => {
-    setRouteOverrides((current) => ({
-      pathname,
-      values: {
-        ...(current.pathname === pathname ? current.values : {}),
-        [section]: open,
-      },
-    }))
     setSidebarSection(section, open)
   }
 
@@ -92,11 +62,11 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <MachinesNav
-          open={sectionOpen("machines")}
+          open={sections.machines}
           onOpenChange={(open) => handleSectionOpenChange("machines", open)}
         />
         <ViewsNav
-          open={sectionOpen("views")}
+          open={sections.views}
           onOpenChange={(open) => handleSectionOpenChange("views", open)}
         />
         <SidebarGroup>

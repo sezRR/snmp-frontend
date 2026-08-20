@@ -35,7 +35,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { LayoutGrid, Pencil } from "lucide-react"
 import * as React from "react"
 
-export const Route = createFileRoute("/_authed/views/$viewId")({
+export const Route = createFileRoute("/_authenticated/views/$viewId")({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(machinesQueryOptions()),

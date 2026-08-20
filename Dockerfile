@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# ---- build ----------------------------------------------------------------
-FROM node:24-alpine AS build
+# ---- dependencies ---------------------------------------------------------
+FROM node:24-alpine AS dependencies
 
 RUN npm install --global pnpm@11
 
@@ -10,7 +10,17 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
+# ---- development ----------------------------------------------------------
+FROM dependencies AS development
+
 COPY . .
+
+EXPOSE 5173
+
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]
+
+# ---- build ----------------------------------------------------------------
+FROM development AS build
 
 # Left empty on purpose: the bundle then calls /api on its own origin and
 # Traefik routes that prefix to the backend, so one image works for every

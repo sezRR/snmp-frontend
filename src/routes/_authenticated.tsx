@@ -25,7 +25,7 @@ import {
  * it. A pathless layout, so the URLs underneath are unchanged — `/machines` is
  * still `/machines`.
  */
-export const Route = createFileRoute("/_authed")({
+export const Route = createFileRoute("/_authenticated")({
   beforeLoad: ({ location }) => {
     // Only a cheap "is there a session at all" check. Whether the tokens are
     // still accepted is the request layer's business, and it signals a lapsed

@@ -71,7 +71,7 @@ import {
 import * as React from "react"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/_authed/users")({
+export const Route = createFileRoute("/_authenticated/users")({
   beforeLoad: ({ context, location }) =>
     requireRouteScope(context.queryClient, SCOPES.usersRead, location.href),
   component: UsersPage,

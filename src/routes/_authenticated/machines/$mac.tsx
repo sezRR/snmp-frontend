@@ -58,7 +58,7 @@ const searchSchema = z.object({
     .default("1h"),
 })
 
-export const Route = createFileRoute("/_authed/machines/$mac")({
+export const Route = createFileRoute("/_authenticated/machines/$mac")({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => ({ range: search.range }),
   loader: ({ context, params, deps }) =>
@@ -68,6 +68,7 @@ export const Route = createFileRoute("/_authed/machines/$mac")({
         metricStatsQueryOptions(params.mac, deps.range)
       ),
     ]),
+  pendingMs: 0,
   pendingComponent: MachineDetailSkeleton,
   component: MachineDetailPage,
 })

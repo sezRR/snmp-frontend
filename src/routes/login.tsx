@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils"
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { Activity } from "lucide-react"
 import * as React from "react"
+import { toast } from "sonner"
 import { z } from "zod"
 
 const searchSchema = z.object({
@@ -75,7 +76,10 @@ function LoginPage() {
     setFieldError(null)
 
     login.mutate(parsed.data, {
-      onSuccess: () => void navigate({ to: returnTo ?? "/" }),
+      onSuccess: () => {
+        toast.success("Signed in successfully")
+        void navigate({ to: returnTo ?? "/" })
+      },
     })
   }
 

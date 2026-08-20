@@ -34,7 +34,7 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Server } from "lucide-react"
 
-export const Route = createFileRoute("/_authed/machines/")({
+export const Route = createFileRoute("/_authenticated/machines/")({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(machinesQueryOptions()),
   pendingComponent: () => <Skeleton className="h-64 rounded-xl" />,

@@ -47,7 +47,7 @@ import { RefreshCw, Trash2 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/_authed/admin")({
+export const Route = createFileRoute("/_authenticated/admin")({
   beforeLoad: ({ context, location }) =>
     requireRouteScope(context.queryClient, SCOPES.adminRead, location.href),
   component: AdminPage,

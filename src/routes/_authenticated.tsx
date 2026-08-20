@@ -8,14 +8,15 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useLiveMetricsSync } from "@/hooks/use-live-sync"
-import { SCOPES, useScopes } from "@/lib/auth/scopes"
-import { hasSession, useSession } from "@/lib/auth/session"
+import { useHasScope } from "@/lib/auth/rbac"
+import { requireSession } from "@/lib/auth/route-guards"
+import { SCOPES } from "@/lib/auth/scopes"
+import { useSession } from "@/lib/auth/session"
 import { meQueryOptions } from "@/lib/queries/auth"
 import {
   Navigate,
   Outlet,
   createFileRoute,
-  redirect,
   useLocation,
 } from "@tanstack/react-router"
 
@@ -25,14 +26,9 @@ import {
  * still `/machines`.
  */
 export const Route = createFileRoute("/_authenticated")({
-  beforeLoad: ({ location }) => {
-    // Only a cheap "is there a session at all" check. Whether the tokens are
-    // still accepted is the request layer's business, and it signals a lapsed
-    // session by clearing the store, which the component below watches.
-    if (!hasSession()) {
-      throw redirect({ to: "/login", search: { redirect: location.href } })
-    }
-  },
+  // Only "is there a session at all". What that session may *do* is asked
+  // further down, by the routes that care — see `_console` and its pages.
+  beforeLoad: requireSession,
   loader: async ({ context }) => {
     // Resolved before the first page renders so scope-gated actions do not
     // flash out of existence on every navigation. A failure is not fatal: the
@@ -48,13 +44,13 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthedLayout() {
   const session = useSession()
-  const scopes = useScopes()
+  const canReadMetrics = useHasScope(SCOPES.metricsRead)
   const location = useLocation()
 
   // One place feeds every page's "latest sample" cache from the stream. The
   // stream costs a ticket per connection, so it is not opened for a user who
   // could not read metrics with it.
-  useLiveMetricsSync(session !== null && scopes.includes(SCOPES.metricsRead))
+  useLiveMetricsSync(session !== null && canReadMetrics)
 
   // The session can end while the app is mounted: a refresh token the backend
   // refuses, or a sign-out in another tab.

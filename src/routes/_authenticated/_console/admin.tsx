@@ -1,4 +1,5 @@
 import { CredentialsAdminCard } from "@/components/admin/credentials-card"
+import { AccessDeniedRedirect } from "@/components/auth/permission-guard"
 import { PurgeCutoffField } from "@/components/metrics/purge-cutoff-field"
 import { MachineStatusDot } from "@/components/sidebar/machine-status-dot"
 import { Badge } from "@/components/ui/badge"
@@ -22,8 +23,10 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
-import { requireRouteScope } from "@/lib/auth/route-guards"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { ADMIN_ACCESS } from "@/lib/auth/access"
+import { useHasScope } from "@/lib/auth/rbac"
+import { requireAccess } from "@/lib/auth/route-guards"
+import { SCOPES } from "@/lib/auth/scopes"
 import { formatCount, formatDuration, formatTimestamp } from "@/lib/format"
 import {
   collectorMachineHealth,
@@ -42,14 +45,13 @@ import {
   usePurgeAllMetricsMutation,
 } from "@/lib/queries/metrics"
 import { useQuery } from "@tanstack/react-query"
-import { Navigate, createFileRoute } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { RefreshCw, Trash2 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/_authenticated/admin")({
-  beforeLoad: ({ context, location }) =>
-    requireRouteScope(context.queryClient, SCOPES.adminRead, location.href),
+export const Route = createFileRoute("/_authenticated/_console/admin")({
+  beforeLoad: requireAccess(ADMIN_ACCESS),
   component: AdminPage,
 })
 
@@ -99,7 +101,7 @@ function AdminPage() {
   }
 
   if (!canRead) {
-    return <Navigate to="/" replace />
+    return <AccessDeniedRedirect />
   }
 
   return (

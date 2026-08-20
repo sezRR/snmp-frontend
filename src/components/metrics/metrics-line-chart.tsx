@@ -17,7 +17,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { withBucketGaps } from "@/lib/live-buckets"
+import { type BucketWindow, withBucketGaps } from "@/lib/live-buckets"
 import type { ChartPoint } from "@/lib/metrics"
 import { useMemo } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
@@ -34,7 +34,8 @@ interface MetricsLineChartProps {
   data: ChartPoint[]
   series: SeriesDef[]
   intervalMs: number
-  rangeMs: number
+  /** The window the stats query resolved, so the axis can span all of it. */
+  queryWindow: BucketWindow
   valueFormatter: (value: number) => string
   yDomain?: [number, number]
 }
@@ -94,10 +95,11 @@ export function MetricsLineChart({
   data,
   series,
   intervalMs,
-  rangeMs,
+  queryWindow,
   valueFormatter,
   yDomain,
 }: MetricsLineChartProps) {
+  const rangeMs = Date.parse(queryWindow.to) - Date.parse(queryWindow.from)
   const chartConfig = Object.fromEntries(
     series.map((s) => [s.dataKey, { label: s.label, color: s.colorVar }])
   ) satisfies ChartConfig
@@ -111,8 +113,8 @@ export function MetricsLineChart({
   // Missing buckets are what an outage looks like in the data, so they are
   // materialised here rather than at every call site.
   const points = useMemo(
-    () => withBucketGaps(data, intervalMs),
-    [data, intervalMs]
+    () => withBucketGaps(data, intervalMs, queryWindow),
+    [data, intervalMs, queryWindow]
   )
   const hasData = points.some((point) =>
     series.some((item) => typeof point[item.dataKey] === "number")

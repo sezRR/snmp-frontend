@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button"
 import { SidebarFooter } from "@/components/ui/sidebar"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { useHasScope } from "@/lib/auth/rbac"
+import { SCOPES } from "@/lib/auth/scopes"
 import { formatDuration } from "@/lib/format"
 import {
   collectorMachineHealth,

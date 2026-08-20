@@ -7,6 +7,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Native controls (the time input's clock, its dropdown panel) paint from
+     the UA color scheme, not from our tokens, so it has to be declared. */
+  color-scheme: light;
   --background: oklch(0.995 0.006 60); /* was: oklch(1 0 0) */
   --foreground: oklch(0.147 0.004 49.3);
   --card: oklch(0.995 0.006 60); /* was: oklch(1 0 0) */
@@ -54,6 +57,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.15 0.01 42); /* was: oklch(0.147 0.004 49.3) */
   --foreground: oklch(0.986 0.002 67.8);
   --card: oklch(0.218 0.014 43); /* was: oklch(0.214 0.009 43.1) */
@@ -163,6 +167,24 @@
       center / contain no-repeat;
   }
   [data-slot="input"][type="search"]::-webkit-search-cancel-button:hover {
+    opacity: 0.8;
+  }
+  /* Same treatment as the search cancel button: the UA glyph is replaced by a
+     currentColor mask so the clock tracks the theme instead of staying black. */
+  [data-slot="input"][type="time"]::-webkit-calendar-picker-indicator {
+    width: 0.875rem;
+    height: 0.875rem;
+    cursor: pointer;
+    background-color: currentColor;
+    opacity: 0.5;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  [data-slot="input"][type="time"]::-webkit-calendar-picker-indicator:hover {
     opacity: 0.8;
   }
   html {

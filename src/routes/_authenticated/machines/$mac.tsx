@@ -5,6 +5,7 @@ import { DiskIoCard } from "@/components/metrics/disk-io-card"
 import { LiveStatusIndicator } from "@/components/metrics/live-status-indicator"
 import { MetricsLineChart } from "@/components/metrics/metrics-line-chart"
 import { RadialMetricCard } from "@/components/metrics/radial-metric-card"
+import { TimeExpressionHelp } from "@/components/metrics/time-expression-help"
 import { TimeRangeSelector } from "@/components/metrics/time-range-selector"
 import {
   MachineStatusDot,
@@ -18,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMachineLiveMetrics } from "@/hooks/use-live-metrics"
 import {
@@ -130,8 +132,6 @@ function MachineDetailPage() {
     chartLiveSnapshots,
     statsResult.intervalMs
   )
-  const rangeMs =
-    Date.parse(statsResult.window.to) - Date.parse(statsResult.window.from)
   const chartDescription = liveRange
     ? "Bucket average · live"
     : "Bucket average"
@@ -241,111 +241,127 @@ function MachineDetailPage() {
         </Card>
       )}
 
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">History</h2>
-        <TimeRangeSelector
-          key={`${range.from}\0${range.to}`}
-          from={range.from}
-          to={range.to}
-          onApply={(next) => {
-            // resetScroll would jump back to the top on every applied window,
-            // losing the chart the user is looking at.
-            void navigate({ search: next, resetScroll: false })
-            if (next.from === range.from && next.to === range.to) {
-              void refetchStats()
-            }
-          }}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <MetricsLineChart
-          title="CPU, RAM & disk"
-          description={chartDescription}
-          data={chartPoints}
-          intervalMs={statsResult.intervalMs}
-          rangeMs={rangeMs}
-          valueFormatter={formatPercent}
-          yDomain={[0, 100]}
-          series={[
-            {
-              dataKey: "cpu_percent",
-              label: "CPU",
-              colorVar: "var(--chart-1)",
-            },
-            {
-              dataKey: "ram_percent",
-              label: "RAM",
-              colorVar: "var(--chart-2)",
-            },
-            {
-              dataKey: "disk_percent",
-              label: "Disk",
-              colorVar: "var(--chart-5)",
-            },
-          ]}
-        />
-        <MetricsLineChart
-          title="Bandwidth"
-          description={chartDescription}
-          data={chartPoints}
-          intervalMs={statsResult.intervalMs}
-          rangeMs={rangeMs}
-          valueFormatter={formatBps}
-          series={[
-            {
-              dataKey: "net_rx_bps",
-              label: "Inbound",
-              colorVar: "var(--chart-3)",
-            },
-            {
-              dataKey: "net_tx_bps",
-              label: "Outbound",
-              colorVar: "var(--chart-4)",
-            },
-          ]}
-        />
-        <MetricsLineChart
-          title="Disk throughput"
-          description={chartDescription}
-          data={chartPoints}
-          intervalMs={statsResult.intervalMs}
-          rangeMs={rangeMs}
-          valueFormatter={formatBytesRate}
-          series={[
-            {
-              dataKey: "disk_read_bps",
-              label: "Read",
-              colorVar: "var(--chart-1)",
-            },
-            {
-              dataKey: "disk_write_bps",
-              label: "Write",
-              colorVar: "var(--chart-4)",
-            },
-          ]}
-        />
-        <MetricsLineChart
-          title="Disk operations"
-          description={chartDescription}
-          data={chartPoints}
-          intervalMs={statsResult.intervalMs}
-          rangeMs={rangeMs}
-          valueFormatter={formatIops}
-          series={[
-            {
-              dataKey: "disk_read_iops",
-              label: "Read",
-              colorVar: "var(--chart-2)",
-            },
-            {
-              dataKey: "disk_write_iops",
-              label: "Write",
-              colorVar: "var(--chart-5)",
-            },
-          ]}
-        />
-      </div>
+      <section
+        className="flex flex-col gap-4 mt-4"
+        aria-labelledby="metric-history-title"
+      >
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-1">
+            <h2
+              id="metric-history-title"
+              className="font-heading text-xl font-semibold tracking-tight"
+            >
+              Metric History
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Explore aggregated trends across a rolling or fixed time window.
+            </p>
+          </div>
+          <TimeRangeSelector
+            key={`${range.from}\0${range.to}`}
+            from={range.from}
+            to={range.to}
+            onApply={(next) => {
+              // resetScroll would jump back to the top on every applied window,
+              // losing the chart the user is looking at.
+              void navigate({ search: next, resetScroll: false })
+              if (next.from === range.from && next.to === range.to) {
+                void refetchStats()
+              }
+            }}
+          />
+        </header>
+        <Separator />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <MetricsLineChart
+            title="CPU, RAM & disk"
+            description={chartDescription}
+            data={chartPoints}
+            intervalMs={statsResult.intervalMs}
+            queryWindow={statsResult.window}
+            valueFormatter={formatPercent}
+            yDomain={[0, 100]}
+            series={[
+              {
+                dataKey: "cpu_percent",
+                label: "CPU",
+                colorVar: "var(--chart-1)",
+              },
+              {
+                dataKey: "ram_percent",
+                label: "RAM",
+                colorVar: "var(--chart-2)",
+              },
+              {
+                dataKey: "disk_percent",
+                label: "Disk",
+                colorVar: "var(--chart-5)",
+              },
+            ]}
+          />
+          <MetricsLineChart
+            title="Bandwidth"
+            description={chartDescription}
+            data={chartPoints}
+            intervalMs={statsResult.intervalMs}
+            queryWindow={statsResult.window}
+            valueFormatter={formatBps}
+            series={[
+              {
+                dataKey: "net_rx_bps",
+                label: "Inbound",
+                colorVar: "var(--chart-3)",
+              },
+              {
+                dataKey: "net_tx_bps",
+                label: "Outbound",
+                colorVar: "var(--chart-4)",
+              },
+            ]}
+          />
+          <MetricsLineChart
+            title="Disk throughput"
+            description={chartDescription}
+            data={chartPoints}
+            intervalMs={statsResult.intervalMs}
+            queryWindow={statsResult.window}
+            valueFormatter={formatBytesRate}
+            series={[
+              {
+                dataKey: "disk_read_bps",
+                label: "Read",
+                colorVar: "var(--chart-1)",
+              },
+              {
+                dataKey: "disk_write_bps",
+                label: "Write",
+                colorVar: "var(--chart-4)",
+              },
+            ]}
+          />
+          <MetricsLineChart
+            title="Disk operations"
+            description={chartDescription}
+            data={chartPoints}
+            intervalMs={statsResult.intervalMs}
+            queryWindow={statsResult.window}
+            valueFormatter={formatIops}
+            series={[
+              {
+                dataKey: "disk_read_iops",
+                label: "Read",
+                colorVar: "var(--chart-2)",
+              },
+              {
+                dataKey: "disk_write_iops",
+                label: "Write",
+                colorVar: "var(--chart-5)",
+              },
+            ]}
+          />
+        </div>
+        <TimeExpressionHelp />
+      </section>
     </div>
   )
 }
@@ -382,15 +398,26 @@ function MachineDetailSkeleton() {
         ))}
       </div>
       <OpenStackCardSkeleton />
-      <div className="flex items-start justify-between">
-        <Skeleton className="h-5 w-16" />
-        <Skeleton className="h-14 w-96 max-w-full" />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-1">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="h-5 w-80 max-w-full" />
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <Skeleton className="h-8 w-36 sm:w-44" />
+          <Skeleton className="h-8 w-36 sm:w-44" />
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="h-8 w-16" />
+        </div>
       </div>
+      <Separator />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (
           <ChartCardSkeleton key={index} />
         ))}
       </div>
+      <Skeleton className="h-8 w-52" />
     </div>
   )
 }

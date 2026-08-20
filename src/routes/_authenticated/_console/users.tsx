@@ -1,3 +1,4 @@
+import { AccessDeniedRedirect } from "@/components/auth/permission-guard"
 import {
   Alert,
   AlertAction,
@@ -45,8 +46,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
 import type { RoleOut as Role, UserOut as User } from "@/lib/api/types"
-import { requireRouteScope } from "@/lib/auth/route-guards"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { USERS_ACCESS } from "@/lib/auth/access"
+import { useHasScope } from "@/lib/auth/rbac"
+import { requireAccess } from "@/lib/auth/route-guards"
+import { SCOPES } from "@/lib/auth/scopes"
 import { meQueryOptions } from "@/lib/queries/auth"
 import {
   useCreateUserMutation,
@@ -58,7 +61,7 @@ import {
   useUsersQuery,
 } from "@/lib/queries/identity"
 import { useQuery } from "@tanstack/react-query"
-import { Navigate, createFileRoute } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import {
   KeyRound,
   Plus,
@@ -71,9 +74,8 @@ import {
 import * as React from "react"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/_authenticated/users")({
-  beforeLoad: ({ context, location }) =>
-    requireRouteScope(context.queryClient, SCOPES.usersRead, location.href),
+export const Route = createFileRoute("/_authenticated/_console/users")({
+  beforeLoad: requireAccess(USERS_ACCESS),
   component: UsersPage,
 })
 
@@ -106,7 +108,7 @@ function UsersPage() {
       selectedAction.user)
     : null
 
-  if (!canRead) return <Navigate to="/" replace />
+  if (!canRead) return <AccessDeniedRedirect />
 
   return (
     <div className="flex flex-col gap-4">

@@ -18,7 +18,8 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Machine } from "@/lib/api/types"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { useHasScope } from "@/lib/auth/rbac"
+import { SCOPES } from "@/lib/auth/scopes"
 import {
   machineName,
   machinesQueryOptions,

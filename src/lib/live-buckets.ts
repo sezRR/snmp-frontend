@@ -1,5 +1,8 @@
-import type { ChartPoint, MetricsSnapshot } from "@/lib/metrics"
-import { snapshotToPoint } from "@/lib/metrics"
+// Relative and extension-qualified, unlike the "@/" alias used elsewhere: this
+// module is covered by tests/live-buckets.test.ts, and the node:test runner
+// resolves neither the alias nor an extensionless specifier.
+import type { ChartPoint, MetricsSnapshot } from "./metrics.ts"
+import { snapshotToPoint } from "./metrics.ts"
 
 type MetricKey = Exclude<keyof ChartPoint, "ts">
 
@@ -27,11 +30,94 @@ const emptyMetrics = (): Omit<ChartPoint, "ts"> =>
 // the missing buckets with nulls restores both the break and the spacing.
 const MAX_FILLED_BUCKETS = 2000
 
+/** The absolute window a chart was asked for, as the stats query resolved it. */
+export interface BucketWindow {
+  from: string
+  to: string
+}
+
+/**
+ * The first and last bucket the backend can emit for a window. Buckets are
+ * stamped with their start and floored to the interval, so the first one can
+ * begin just before `from`, and the last one is the final interval that starts
+ * before `to` — the window is half-open.
+ */
+function windowBucketBounds(
+  window: BucketWindow,
+  intervalMs: number
+): { first: number; last: number } | undefined {
+  const fromMs = Date.parse(window.from)
+  const toMs = Date.parse(window.to)
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return undefined
+  return {
+    first: Math.floor(fromMs / intervalMs) * intervalMs,
+    last: Math.floor((toMs - 1) / intervalMs) * intervalMs,
+  }
+}
+
+function emptyBucket(ms: number): ChartPoint {
+  return { ts: new Date(ms).toISOString(), ...emptyMetrics() }
+}
+
+// A machine that was silent for the first or last stretch of the window
+// produces no rows there, and the axis — which plots points evenly rather than
+// by time — would then start at the first sample instead of at From, quietly
+// rescaling the window the user asked for. Padding the edges keeps the chart
+// spanning exactly the window that was queried.
+function padToWindow(
+  points: ChartPoint[],
+  intervalMs: number,
+  window: BucketWindow
+): ChartPoint[] {
+  // No data at all keeps its empty state rather than becoming a window of nulls.
+  if (points.length === 0) return points
+  const bounds = windowBucketBounds(window, intervalMs)
+  if (!bounds) return points
+
+  const leading: ChartPoint[] = []
+  const firstPointMs = Date.parse(points[0].ts)
+  if (Number.isFinite(firstPointMs)) {
+    for (
+      let ts = bounds.first;
+      ts < firstPointMs && leading.length < MAX_FILLED_BUCKETS;
+      ts += intervalMs
+    ) {
+      leading.push(emptyBucket(ts))
+    }
+  }
+
+  const trailing: ChartPoint[] = []
+  const lastPointMs = Date.parse(points[points.length - 1].ts)
+  if (Number.isFinite(lastPointMs)) {
+    // The live tail can already reach past the queried `to`; only ever add.
+    for (
+      let ts = lastPointMs + intervalMs;
+      ts <= bounds.last && trailing.length < MAX_FILLED_BUCKETS;
+      ts += intervalMs
+    ) {
+      trailing.push(emptyBucket(ts))
+    }
+  }
+
+  if (leading.length === 0 && trailing.length === 0) return points
+  return [...leading, ...points, ...trailing]
+}
+
 export function withBucketGaps(
+  points: ChartPoint[],
+  intervalMs: number,
+  window?: BucketWindow
+): ChartPoint[] {
+  if (intervalMs <= 0) return points
+  const filled = fillInteriorGaps(points, intervalMs)
+  return window ? padToWindow(filled, intervalMs, window) : filled
+}
+
+function fillInteriorGaps(
   points: ChartPoint[],
   intervalMs: number
 ): ChartPoint[] {
-  if (points.length < 2 || intervalMs <= 0) return points
+  if (points.length < 2) return points
 
   const filled: ChartPoint[] = [points[0]]
   for (let i = 1; i < points.length; i += 1) {
@@ -46,10 +132,7 @@ export function withBucketGaps(
         MAX_FILLED_BUCKETS
       )
       for (let step = 1; step <= missing; step += 1) {
-        filled.push({
-          ts: new Date(prevMs + step * intervalMs).toISOString(),
-          ...emptyMetrics(),
-        })
+        filled.push(emptyBucket(prevMs + step * intervalMs))
       }
     }
     filled.push(point)

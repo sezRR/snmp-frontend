@@ -17,22 +17,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { SCOPES, useScopes } from "@/lib/auth/scopes"
+import { ADMIN_ACCESS, ROLES_ACCESS, USERS_ACCESS } from "@/lib/auth/access"
+import { allows, useAuth } from "@/lib/auth/rbac"
 import { Link, useLocation } from "@tanstack/react-router"
 import { Activity, ShieldCheck, Users, Wrench } from "lucide-react"
 
+// The same rules the routes are guarded by, so a link is never offered to a
+// page that would turn the user straight around at /unauthorized.
 const navItems = [
-  { title: "Admin", to: "/admin", icon: Wrench, scope: SCOPES.adminRead },
-  { title: "Users", to: "/users", icon: Users, scope: SCOPES.usersRead },
-  { title: "Roles", to: "/roles", icon: ShieldCheck, scope: SCOPES.rolesRead },
+  { title: "Admin", to: "/admin", icon: Wrench, access: ADMIN_ACCESS },
+  { title: "Users", to: "/users", icon: Users, access: USERS_ACCESS },
+  { title: "Roles", to: "/roles", icon: ShieldCheck, access: ROLES_ACCESS },
 ] as const
 
 export function AppSidebar() {
   const { pathname } = useLocation()
   const closeOnNavigate = useCloseOnNavigate()
   const sections = useSidebarSections()
-  const scopes = useScopes()
-  const visibleItems = navItems.filter((item) => scopes.includes(item.scope))
+  const auth = useAuth()
+  const visibleItems = navItems.filter((item) => allows(auth, item.access))
 
   const handleSectionOpenChange = (section: SidebarSection, open: boolean) => {
     setSidebarSection(section, open)

@@ -36,7 +36,8 @@ import type {
   SnmpCredentialForm,
 } from "@/lib/api/types"
 import { machineCreateSchema } from "@/lib/api/types"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { useHasScope } from "@/lib/auth/rbac"
+import { SCOPES } from "@/lib/auth/scopes"
 import { useCachedServersQuery } from "@/lib/queries/admin"
 import {
   credentialSummary,

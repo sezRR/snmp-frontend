@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
-import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
-import { Route as AuthenticatedRolesRouteImport } from './routes/_authenticated/roles'
-import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
+import { Route as AuthenticatedConsoleRouteImport } from './routes/_authenticated/_console'
+import { Route as AuthenticatedUnauthorizedRouteImport } from './routes/_authenticated/unauthorized'
+import { Route as AuthenticatedConsoleAdminRouteImport } from './routes/_authenticated/_console/admin'
+import { Route as AuthenticatedConsoleRolesRouteImport } from './routes/_authenticated/_console/roles'
+import { Route as AuthenticatedConsoleUsersRouteImport } from './routes/_authenticated/_console/users'
 import { Route as AuthenticatedMachinesIndexRouteImport } from './routes/_authenticated/machines/index'
 import { Route as AuthenticatedMachinesMacRouteImport } from './routes/_authenticated/machines/$mac'
 import { Route as AuthenticatedViewsViewIdRouteImport } from './routes/_authenticated/views/$viewId'
@@ -33,21 +35,34 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const AuthenticatedConsoleRoute = AuthenticatedConsoleRouteImport.update({
+  id: '/_console',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedRolesRoute = AuthenticatedRolesRouteImport.update({
-  id: '/roles',
-  path: '/roles',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
+const AuthenticatedUnauthorizedRoute =
+  AuthenticatedUnauthorizedRouteImport.update({
+    id: '/unauthorized',
+    path: '/unauthorized',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedConsoleAdminRoute =
+  AuthenticatedConsoleAdminRouteImport.update({
+    id: '/admin',
+    path: '/admin',
+    getParentRoute: () => AuthenticatedConsoleRoute,
+  } as any)
+const AuthenticatedConsoleRolesRoute =
+  AuthenticatedConsoleRolesRouteImport.update({
+    id: '/roles',
+    path: '/roles',
+    getParentRoute: () => AuthenticatedConsoleRoute,
+  } as any)
+const AuthenticatedConsoleUsersRoute =
+  AuthenticatedConsoleUsersRouteImport.update({
+    id: '/users',
+    path: '/users',
+    getParentRoute: () => AuthenticatedConsoleRoute,
+  } as any)
 const AuthenticatedMachinesIndexRoute =
   AuthenticatedMachinesIndexRouteImport.update({
     id: '/machines/',
@@ -70,19 +85,21 @@ const AuthenticatedViewsViewIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
-  '/admin': typeof AuthenticatedAdminRoute
-  '/roles': typeof AuthenticatedRolesRoute
-  '/users': typeof AuthenticatedUsersRoute
+  '/unauthorized': typeof AuthenticatedUnauthorizedRoute
+  '/admin': typeof AuthenticatedConsoleAdminRoute
+  '/roles': typeof AuthenticatedConsoleRolesRoute
+  '/users': typeof AuthenticatedConsoleUsersRoute
   '/machines/$mac': typeof AuthenticatedMachinesMacRoute
   '/views/$viewId': typeof AuthenticatedViewsViewIdRoute
   '/machines/': typeof AuthenticatedMachinesIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/admin': typeof AuthenticatedAdminRoute
-  '/roles': typeof AuthenticatedRolesRoute
-  '/users': typeof AuthenticatedUsersRoute
   '/': typeof AuthenticatedIndexRoute
+  '/unauthorized': typeof AuthenticatedUnauthorizedRoute
+  '/admin': typeof AuthenticatedConsoleAdminRoute
+  '/roles': typeof AuthenticatedConsoleRolesRoute
+  '/users': typeof AuthenticatedConsoleUsersRoute
   '/machines/$mac': typeof AuthenticatedMachinesMacRoute
   '/views/$viewId': typeof AuthenticatedViewsViewIdRoute
   '/machines': typeof AuthenticatedMachinesIndexRoute
@@ -91,10 +108,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
-  '/_authenticated/admin': typeof AuthenticatedAdminRoute
-  '/_authenticated/roles': typeof AuthenticatedRolesRoute
-  '/_authenticated/users': typeof AuthenticatedUsersRoute
+  '/_authenticated/_console': typeof AuthenticatedConsoleRouteWithChildren
+  '/_authenticated/unauthorized': typeof AuthenticatedUnauthorizedRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/_console/admin': typeof AuthenticatedConsoleAdminRoute
+  '/_authenticated/_console/roles': typeof AuthenticatedConsoleRolesRoute
+  '/_authenticated/_console/users': typeof AuthenticatedConsoleUsersRoute
   '/_authenticated/machines/$mac': typeof AuthenticatedMachinesMacRoute
   '/_authenticated/views/$viewId': typeof AuthenticatedViewsViewIdRoute
   '/_authenticated/machines/': typeof AuthenticatedMachinesIndexRoute
@@ -104,6 +123,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/unauthorized'
     | '/admin'
     | '/roles'
     | '/users'
@@ -113,10 +133,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/'
+    | '/unauthorized'
     | '/admin'
     | '/roles'
     | '/users'
-    | '/'
     | '/machines/$mac'
     | '/views/$viewId'
     | '/machines'
@@ -124,10 +145,12 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/login'
-    | '/_authenticated/admin'
-    | '/_authenticated/roles'
-    | '/_authenticated/users'
+    | '/_authenticated/_console'
+    | '/_authenticated/unauthorized'
     | '/_authenticated/'
+    | '/_authenticated/_console/admin'
+    | '/_authenticated/_console/roles'
+    | '/_authenticated/_console/users'
     | '/_authenticated/machines/$mac'
     | '/_authenticated/views/$viewId'
     | '/_authenticated/machines/'
@@ -161,26 +184,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/admin': {
-      id: '/_authenticated/admin'
+    '/_authenticated/_console': {
+      id: '/_authenticated/_console'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedConsoleRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/unauthorized': {
+      id: '/_authenticated/unauthorized'
+      path: '/unauthorized'
+      fullPath: '/unauthorized'
+      preLoaderRoute: typeof AuthenticatedUnauthorizedRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_console/admin': {
+      id: '/_authenticated/_console/admin'
       path: '/admin'
       fullPath: '/admin'
-      preLoaderRoute: typeof AuthenticatedAdminRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      preLoaderRoute: typeof AuthenticatedConsoleAdminRouteImport
+      parentRoute: typeof AuthenticatedConsoleRoute
     }
-    '/_authenticated/roles': {
-      id: '/_authenticated/roles'
+    '/_authenticated/_console/roles': {
+      id: '/_authenticated/_console/roles'
       path: '/roles'
       fullPath: '/roles'
-      preLoaderRoute: typeof AuthenticatedRolesRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      preLoaderRoute: typeof AuthenticatedConsoleRolesRouteImport
+      parentRoute: typeof AuthenticatedConsoleRoute
     }
-    '/_authenticated/users': {
-      id: '/_authenticated/users'
+    '/_authenticated/_console/users': {
+      id: '/_authenticated/_console/users'
       path: '/users'
       fullPath: '/users'
-      preLoaderRoute: typeof AuthenticatedUsersRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      preLoaderRoute: typeof AuthenticatedConsoleUsersRouteImport
+      parentRoute: typeof AuthenticatedConsoleRoute
     }
     '/_authenticated/machines/': {
       id: '/_authenticated/machines/'
@@ -206,10 +243,24 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedConsoleRouteChildren {
+  AuthenticatedConsoleAdminRoute: typeof AuthenticatedConsoleAdminRoute
+  AuthenticatedConsoleRolesRoute: typeof AuthenticatedConsoleRolesRoute
+  AuthenticatedConsoleUsersRoute: typeof AuthenticatedConsoleUsersRoute
+}
+
+const AuthenticatedConsoleRouteChildren: AuthenticatedConsoleRouteChildren = {
+  AuthenticatedConsoleAdminRoute: AuthenticatedConsoleAdminRoute,
+  AuthenticatedConsoleRolesRoute: AuthenticatedConsoleRolesRoute,
+  AuthenticatedConsoleUsersRoute: AuthenticatedConsoleUsersRoute,
+}
+
+const AuthenticatedConsoleRouteWithChildren =
+  AuthenticatedConsoleRoute._addFileChildren(AuthenticatedConsoleRouteChildren)
+
 interface AuthenticatedRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
-  AuthenticatedRolesRoute: typeof AuthenticatedRolesRoute
-  AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
+  AuthenticatedConsoleRoute: typeof AuthenticatedConsoleRouteWithChildren
+  AuthenticatedUnauthorizedRoute: typeof AuthenticatedUnauthorizedRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedMachinesMacRoute: typeof AuthenticatedMachinesMacRoute
   AuthenticatedViewsViewIdRoute: typeof AuthenticatedViewsViewIdRoute
@@ -217,9 +268,8 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
-  AuthenticatedRolesRoute: AuthenticatedRolesRoute,
-  AuthenticatedUsersRoute: AuthenticatedUsersRoute,
+  AuthenticatedConsoleRoute: AuthenticatedConsoleRouteWithChildren,
+  AuthenticatedUnauthorizedRoute: AuthenticatedUnauthorizedRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedMachinesMacRoute: AuthenticatedMachinesMacRoute,
   AuthenticatedViewsViewIdRoute: AuthenticatedViewsViewIdRoute,

@@ -19,6 +19,7 @@ import PixelBlast from "@/components/ui/pixel-blast/pixel-blast-background"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
 import { loginSchema } from "@/lib/api/types"
+import { returnToSchema } from "@/lib/auth/search"
 import { hasSession } from "@/lib/auth/session"
 import { useLoginMutation } from "@/lib/queries/auth"
 import { cn } from "@/lib/utils"
@@ -28,22 +29,7 @@ import * as React from "react"
 import { toast } from "sonner"
 import { z } from "zod"
 
-const searchSchema = z.object({
-  /**
-   * Where the guard turned the visitor away from, to be resumed after signing
-   * in. Only a path on this origin survives validation: an absolute URL here
-   * would turn the login page into an open redirect, and `//host` is a
-   * protocol-relative URL wearing a path's clothes.
-   */
-  redirect: z
-    .string()
-    .optional()
-    .transform((value) =>
-      value && value.startsWith("/") && !value.startsWith("//")
-        ? value
-        : undefined
-    ),
-})
+const searchSchema = z.object({ redirect: returnToSchema })
 
 export const Route = createFileRoute("/login")({
   validateSearch: searchSchema,

@@ -29,7 +29,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
 import type { Machine } from "@/lib/api/types"
 import { machineUpdateSchema } from "@/lib/api/types"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { useHasScope } from "@/lib/auth/rbac"
+import { SCOPES } from "@/lib/auth/scopes"
 import { useForceTickMutation } from "@/lib/queries/admin"
 import {
   machineName,

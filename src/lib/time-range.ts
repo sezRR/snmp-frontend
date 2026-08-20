@@ -3,7 +3,7 @@ const MINUTE = 60 * SECOND
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-const RELATIVE_TIME = /^now(?:([+-])(\d+)([smhdwMy]))?$/
+const RELATIVE_TIME = /^now(?:([+-])(\d+)([smhdwMy]))?(?:\/([smhdwMy]))?$/
 const ABSOLUTE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
 const BUCKET_DURATION = /^(\d+(?:\.\d+)?)(s|m|h|d)$/
@@ -18,7 +18,8 @@ export const DEFAULT_TIME_RANGE = {
   to: "now",
 } as const satisfies TimeRange
 
-export const TIME_EXPRESSION_EXAMPLE = "Use now, now-1h, or YYYY-MM-DD HH:mm."
+export const TIME_EXPRESSION_EXAMPLE =
+  "Use now, now-1h, now/d, or YYYY-MM-DD HH:mm."
 
 function addCalendarMonths(date: Date, amount: number): Date {
   const result = new Date(date)
@@ -46,6 +47,30 @@ function offsetNow(now: Date, amount: number, unit: string): Date {
 
   const scale = unit === "s" ? SECOND : unit === "m" ? MINUTE : HOUR
   return new Date(result.getTime() + amount * scale)
+}
+
+function floorTime(date: Date, unit: string): Date {
+  const result = new Date(date)
+  if (unit === "y") {
+    result.setMonth(0, 1)
+    result.setHours(0, 0, 0, 0)
+  } else if (unit === "M") {
+    result.setDate(1)
+    result.setHours(0, 0, 0, 0)
+  } else if (unit === "w") {
+    const daysSinceMonday = (result.getDay() + 6) % 7
+    result.setDate(result.getDate() - daysSinceMonday)
+    result.setHours(0, 0, 0, 0)
+  } else if (unit === "d") {
+    result.setHours(0, 0, 0, 0)
+  } else if (unit === "h") {
+    result.setMinutes(0, 0, 0)
+  } else if (unit === "m") {
+    result.setSeconds(0, 0)
+  } else {
+    result.setMilliseconds(0)
+  }
+  return result
 }
 
 function parseAbsoluteTime(match: RegExpExecArray): Date {
@@ -80,10 +105,13 @@ export function resolveTimeExpression(value: string, now = new Date()): Date {
   const expression = value.trim()
   const relative = RELATIVE_TIME.exec(expression)
   if (relative) {
-    const [, sign, amountText, unit] = relative
-    if (!sign || !amountText || !unit) return new Date(now)
+    const [, sign, amountText, unit, floorUnit] = relative
     const direction = sign === "+" ? 1 : -1
-    const result = offsetNow(now, direction * Number(amountText), unit)
+    const offset =
+      sign && amountText && unit
+        ? offsetNow(now, direction * Number(amountText), unit)
+        : new Date(now)
+    const result = floorUnit ? floorTime(offset, floorUnit) : offset
     if (Number.isNaN(result.getTime())) throw new Error(TIME_EXPRESSION_EXAMPLE)
     return result
   }
@@ -119,6 +147,16 @@ export function isRelativeTime(value: string): boolean {
 
 export function isLiveTimeRange(range: TimeRange): boolean {
   return range.to.trim() === "now"
+}
+
+/** Format a Date for the browser-local absolute syntax accepted above. */
+export function formatAbsoluteTime(date: Date): string {
+  if (Number.isNaN(date.getTime())) throw new Error("Invalid date")
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  ].join(" ")
 }
 
 /** Parse the effective preset returned in X-Metrics-Bucket. */

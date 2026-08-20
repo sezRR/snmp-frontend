@@ -1,3 +1,4 @@
+import { AccessDeniedRedirect } from "@/components/auth/permission-guard"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,8 +41,10 @@ import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
 import type { RoleOut as Role, ScopeInfo } from "@/lib/api/types"
-import { requireRouteScope } from "@/lib/auth/route-guards"
-import { SCOPES, useHasScope } from "@/lib/auth/scopes"
+import { ROLES_ACCESS } from "@/lib/auth/access"
+import { useHasScope } from "@/lib/auth/rbac"
+import { requireAccess } from "@/lib/auth/route-guards"
+import { SCOPES } from "@/lib/auth/scopes"
 import {
   useCreateRoleMutation,
   useDeleteRoleMutation,
@@ -50,7 +53,7 @@ import {
   useScopesQuery,
   useUpdateRoleMutation,
 } from "@/lib/queries/identity"
-import { Navigate, createFileRoute } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import {
   CircleAlert,
   LockKeyhole,
@@ -64,9 +67,8 @@ import {
 import * as React from "react"
 import { toast } from "sonner"
 
-export const Route = createFileRoute("/_authenticated/roles")({
-  beforeLoad: ({ context, location }) =>
-    requireRouteScope(context.queryClient, SCOPES.rolesRead, location.href),
+export const Route = createFileRoute("/_authenticated/_console/roles")({
+  beforeLoad: requireAccess(ROLES_ACCESS),
   component: RolesPage,
 })
 
@@ -112,7 +114,7 @@ function RolesPage() {
   const [managing, setManaging] = React.useState<Role | null>(null)
   const [deleting, setDeleting] = React.useState<Role | null>(null)
 
-  if (!canRead) return <Navigate to="/" replace />
+  if (!canRead) return <AccessDeniedRedirect />
 
   const currentEditing = editing
     ? (rolesQuery.data?.find((role) => role.name === editing.name) ?? editing)

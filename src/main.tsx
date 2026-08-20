@@ -2,6 +2,7 @@ import {
   NotFoundScreen,
   RouteErrorScreen,
 } from "@/components/errors/error-screen"
+import { createRouterAuth } from "@/lib/auth/rbac"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider, createRouter } from "@tanstack/react-router"
 import { StrictMode } from "react"
@@ -19,7 +20,9 @@ const queryClient = new QueryClient({
 // Create a new router instance
 const router = createRouter({
   routeTree,
-  context: { queryClient },
+  // `auth` reads the identity out of the cache on every call, so this one
+  // object stays correct as the signed-in user changes underneath it.
+  context: { queryClient, auth: createRouterAuth(queryClient) },
   defaultPreload: "intent",
   // React Query owns caching; don't double-cache loader results in the router
   defaultPreloadStaleTime: 0,

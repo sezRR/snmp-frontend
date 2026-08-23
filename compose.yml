@@ -21,7 +21,7 @@ services:
       context: .
       target: runtime
       args:
-        VITE_API_BASE_URL: "${VITE_API_BASE_URL-}"
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:?VITE_API_BASE_URL is required}"
         VITE_API_PREFIX: "${VITE_API_PREFIX-}"
     ports:
       - "${FRONTEND_PROD_PORT:-8080}:80"

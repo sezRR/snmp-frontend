@@ -120,18 +120,3 @@ export function samplesByMac(
 ): Record<string, MetricSample> {
   return Object.fromEntries(samples.map((sample) => [sample.mac, sample]))
 }
-
-export function readSampleCount(count: {
-  samples?: number | null
-  rows?: number | null
-  count?: number | null
-}): number | null {
-  return count.samples ?? count.rows ?? count.count ?? null
-}
-
-export function readLatestTs(count: {
-  latest?: string | null
-  latest_ts?: string | null
-}): string | null {
-  return count.latest ?? count.latest_ts ?? null
-}

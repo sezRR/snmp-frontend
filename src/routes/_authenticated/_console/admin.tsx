@@ -23,6 +23,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
+import type { MetricSourceCount } from "@/lib/api/types"
 import { ADMIN_ACCESS } from "@/lib/auth/access"
 import { useHasScope } from "@/lib/auth/rbac"
 import { requireAccess } from "@/lib/auth/route-guards"
@@ -39,8 +40,6 @@ import {
 } from "@/lib/queries/admin"
 import { machineName, machinesQueryOptions } from "@/lib/queries/machines"
 import {
-  readLatestTs,
-  readSampleCount,
   useMetricCountsQuery,
   usePurgeAllMetricsMutation,
 } from "@/lib/queries/metrics"
@@ -291,7 +290,8 @@ function AdminPage() {
           <CardHeader>
             <CardTitle>Stored samples</CardTitle>
             <CardDescription>
-              Row count and newest sample per machine.
+              Raw and rolled-up rows, represented samples, and oldest/newest row
+              times per machine.
             </CardDescription>
             {canPurge ? (
               <CardAction>
@@ -307,21 +307,24 @@ function AdminPage() {
           </CardHeader>
           <CardContent className="flex flex-col">
             {(counts ?? []).map((count, index) => {
-              const samples = readSampleCount(count)
-              const latest = readLatestTs(count)
+              const label = labelFor(count.mac)
               return (
                 <div key={count.mac}>
                   {index > 0 ? <Separator /> : null}
-                  <div className="flex items-center gap-3 px-1 py-2 text-sm">
-                    <span className="flex-1 truncate">
-                      {labelFor(count.mac)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {latest ? formatTimestamp(latest) : "no samples"}
-                    </span>
-                    <span className="font-medium tabular-nums">
-                      {samples === null ? "n/a" : formatCount(samples)}
-                    </span>
+                  <div className="flex flex-col gap-3 px-1 py-3 text-sm">
+                    <div className="flex min-w-0 items-baseline justify-between gap-3">
+                      <span className="truncate font-medium">{label}</span>
+                      {label !== count.mac ? (
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {count.mac}
+                        </span>
+                      ) : null}
+                    </div>
+                    <dl className="grid gap-3 sm:grid-cols-3">
+                      <StoredSource label="Raw" count={count.metrics} />
+                      <StoredSource label="1 minute" count={count.metrics_1m} />
+                      <StoredSource label="1 hour" count={count.metrics_1h} />
+                    </dl>
                   </div>
                 </div>
               )
@@ -376,7 +379,7 @@ function AdminPage() {
                       toast.success(
                         result.rows_deleted == null
                           ? `History purged (${result.method})`
-                          : `Purged ${formatCount(result.rows_deleted)} samples`
+                          : `Purged ${formatCount(result.rows_deleted)} stored rows`
                       ),
                     onError: (error) =>
                       toast.error(errorMessage(error, "Purge failed")),
@@ -401,5 +404,39 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="truncate font-medium">{value}</dd>
     </div>
+  )
+}
+
+function StoredSource({
+  label,
+  count,
+}: {
+  label: string
+  count: MetricSourceCount
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="tabular-nums">
+        <span className="font-medium">{formatCount(count.rows)}</span> rows
+        <span className="text-muted-foreground">
+          {` / ${formatCount(count.samples)} represented samples`}
+        </span>
+      </dd>
+      <dd className="grid grid-cols-[auto_1fr] gap-x-2 text-xs text-muted-foreground">
+        <span>Oldest row</span>
+        <StoredTimestamp value={count.oldest} />
+        <span>Newest row</span>
+        <StoredTimestamp value={count.latest} />
+      </dd>
+    </div>
+  )
+}
+
+function StoredTimestamp({ value }: { value: string | null }) {
+  return value ? (
+    <time dateTime={value}>{formatTimestamp(value)}</time>
+  ) : (
+    <span>n/a</span>
   )
 }

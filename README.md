@@ -1,51 +1,32 @@
-# React + TypeScript + Vite + shadcn/ui
+# SNMP Frontend
 
-This is a template for a new Vite project with React, TypeScript, and shadcn/ui.
-
-## Adding components
-
-To add components to your app, run the following command:
-
-```bash
-npx shadcn@latest add button
-```
-
-This will place the ui components in the `src/components` directory.
-
-## Using components
-
-To use the components in your app, import them as follows:
-
-```tsx
-import { Button } from "@/components/ui/button"
-```
-
-## Docker Compose
-
-Create the local environment file before starting either setup:
+## Setup
 
 ```bash
 cp .env.example .env
+pnpm install
+pnpm dev
 ```
 
-Start the Vite development server with source files mounted for hot reload:
+`VITE_API_BASE_URL` is required and must point to the backend API origin.
+
+## Docker
 
 ```bash
+# Development: http://localhost:5173
 docker compose up --build
-```
 
-The development app is available at `http://localhost:5173` by default.
-
-Build and start the production Nginx image instead:
-
-```bash
+# Production: http://localhost:8080
 docker compose --profile production up --build --detach frontend-prod
 ```
 
-The production app is available at `http://localhost:8080` by default. Change
-`FRONTEND_DEV_PORT` or `FRONTEND_PROD_PORT` in `.env` to use different host
-ports. Vite variables are read when the production image is built, so rebuild
-the image after changing `VITE_API_BASE_URL` or `VITE_API_PREFIX`.
+The Makefile provides production shortcuts:
 
-Stop development with `docker compose down`. Stop production with
-`docker compose --profile production down`.
+```bash
+make up-prod       # Build and start
+make restart-prod  # Restart
+make down-prod     # Stop and remove
+```
+
+Rebuild after changing a `VITE_*` variable. Override the default ports with
+`FRONTEND_DEV_PORT` and `FRONTEND_PROD_PORT`.

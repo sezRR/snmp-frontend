@@ -85,7 +85,7 @@ function testFeedback(result: CredentialTestResult): TestFeedback {
   return {
     ok: result.ok,
     title: result.ok ? "SNMP walk succeeded" : "SNMP walk failed",
-    detail: `${result.detail ?? (result.ok ? "The credential works." : "The machine did not answer.")} Completed in ${duration}${result.simulated ? " (simulated)." : "."}`,
+    detail: `${result.detail ?? (result.ok ? "The credential works." : "The machine did not answer.")} Completed in ${duration}.`,
   }
 }
 

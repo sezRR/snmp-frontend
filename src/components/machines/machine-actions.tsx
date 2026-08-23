@@ -27,10 +27,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError } from "@/lib/api/client"
-import type { Machine } from "@/lib/api/types"
+import type { Machine, PurgeResult } from "@/lib/api/types"
 import { machineUpdateSchema } from "@/lib/api/types"
 import { useHasScope } from "@/lib/auth/rbac"
 import { SCOPES } from "@/lib/auth/scopes"
+import { formatCount } from "@/lib/format"
 import { useForceTickMutation } from "@/lib/queries/admin"
 import {
   machineName,
@@ -55,6 +56,18 @@ import { toast } from "sonner"
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
+}
+
+function purgeMessage(result: PurgeResult): string {
+  if (result.rows_deleted == null) return `History purged (${result.method})`
+  const sources = result.rows_deleted_by_source
+  if (!sources) return `Purged ${formatCount(result.rows_deleted)} stored rows`
+  return (
+    `Purged ${formatCount(result.rows_deleted)} stored rows (` +
+    `${formatCount(sources.metrics)} raw, ` +
+    `${formatCount(sources.metrics_1m)} 1m, ` +
+    `${formatCount(sources.metrics_1h)} 1h)`
+  )
 }
 
 interface MachineActionsProps {
@@ -147,12 +160,7 @@ export function MachineActions({
     purge.mutate(
       { mac: machine.mac, before: cutoff?.toISOString() },
       {
-        onSuccess: (result) =>
-          toast.success(
-            result.rows_deleted === null || result.rows_deleted === undefined
-              ? `History purged (${result.method})`
-              : `Purged ${result.rows_deleted} samples`
-          ),
+        onSuccess: (result) => toast.success(purgeMessage(result)),
         onError: (error) => toast.error(errorMessage(error, "Purge failed")),
         onSettled: () => setConfirmingPurge(false),
       }

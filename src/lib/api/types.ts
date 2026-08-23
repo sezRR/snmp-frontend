@@ -317,7 +317,6 @@ export const credentialTestResultSchema = z.object({
   credential_id: z.string().nullish(),
   duration_seconds: z.number(),
   detail: z.string().nullish(),
-  simulated: z.boolean().default(false),
 })
 export type CredentialTestResult = z.infer<typeof credentialTestResultSchema>
 
@@ -422,13 +421,21 @@ export const metricStatsRowSchema = z.object({
 })
 export type MetricStatsRow = z.infer<typeof metricStatsRowSchema>
 
-export const metricCountSchema = z.looseObject({
+export const metricSourceCountSchema = z.object({
+  rows: z.number().int().nonnegative(),
+  samples: z.number().int().nonnegative(),
+  oldest: z.string().nullable(),
+  latest: z.string().nullable(),
+})
+export type MetricSourceCount = z.infer<typeof metricSourceCountSchema>
+
+export const metricCountSchema = z.object({
   mac: z.string(),
-  samples: optionalNumber,
-  rows: optionalNumber,
-  count: optionalNumber,
-  latest: z.string().nullish(),
-  latest_ts: z.string().nullish(),
+  samples: z.number().int().nonnegative(),
+  latest: z.string().nullable(),
+  metrics: metricSourceCountSchema,
+  metrics_1m: metricSourceCountSchema,
+  metrics_1h: metricSourceCountSchema,
 })
 export type MetricCount = z.infer<typeof metricCountSchema>
 
@@ -438,6 +445,13 @@ export const purgeResultSchema = z.object({
   before: z.string().nullish(),
   method: z.string(),
   rows_deleted: z.number().int().nullish(),
+  rows_deleted_by_source: z
+    .object({
+      metrics: z.number().int().nonnegative(),
+      metrics_1m: z.number().int().nonnegative(),
+      metrics_1h: z.number().int().nonnegative(),
+    })
+    .nullish(),
 })
 export type PurgeResult = z.infer<typeof purgeResultSchema>
 

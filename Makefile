@@ -8,3 +8,10 @@ down-prod:
 
 restart-prod:
 	$(COMPOSE) --profile production restart frontend-prod
+
+clean-prod:
+	$(COMPOSE) --profile production down --remove-orphans
+	$(COMPOSE) --profile production rm -f frontend-prod
+
+build-prod:
+	$(COMPOSE) --profile production build frontend-prod

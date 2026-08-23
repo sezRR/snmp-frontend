@@ -37,7 +37,6 @@ const diskRate = (value: number | null): string =>
 
 interface MachineCardProps {
   machine: Machine
-  /** Newest sample from the fleet stream, or the /metrics/latest fallback. */
   sample?: MetricSample
   failing?: boolean
 }
@@ -71,15 +70,9 @@ export function MachineCard({ machine, sample, failing }: MachineCardProps) {
             {!machine.enabled ? (
               <Badge variant="secondary">disabled</Badge>
             ) : null}
-            {/* Registered with nothing to authenticate a poll with, so the
-                collector skips it entirely — worth saying out loud, since
-                every metric below would otherwise just read "n/a". */}
             {machine.credential_id ? null : (
               <Badge variant="destructive">no credential</Badge>
             )}
-            {/* Expected for an external machine, so that states the fact. A
-                managed one missing its record is a machine that moved or was
-                deleted in OpenStack after registration — worth flagging. */}
             {machine.external ? (
               <Badge variant="outline">external</Badge>
             ) : !machine.openstack_found ? (

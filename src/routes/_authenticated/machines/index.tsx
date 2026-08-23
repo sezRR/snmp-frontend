@@ -106,9 +106,6 @@ function MachinesPage() {
                       <span className="truncate text-xs text-muted-foreground">
                         {machine.ipv4} ·{" "}
                         <span className="font-mono">{machine.mac}</span>
-                        {/* The collector's own stamp, shown as it recorded it.
-                            Ageing it against this browser would only report
-                            how far the two clocks have drifted apart. */}
                         {sample
                           ? ` · sampled ${formatTimestamp(sample.ts)}`
                           : " · no samples"}

@@ -7,7 +7,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import PixelBlast from "@/components/ui/pixel-blast/pixel-blast-background"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { Link, useLocation, useRouter } from "@tanstack/react-router"
@@ -22,10 +21,9 @@ import {
 } from "lucide-react"
 import * as React from "react"
 
-// The page shown when there is nothing else to show: the API is gone, a route
-// threw, or the URL names nothing. One layout for all three, deliberately built
-// from the same parts as the sign-in page — a visitor who has only ever seen
-// this application fail should still recognise where they are.
+const PixelBlast = React.lazy(
+  () => import("@/components/ui/pixel-blast/pixel-blast-background")
+)
 
 type Tone = "danger" | "neutral"
 
@@ -37,15 +35,12 @@ const toneTile: Record<Tone, string> = {
 const shadow = "inset-shadow-xs dark:inset-shadow-primary-foreground/20"
 
 interface ErrorScreenProps {
-  /** The machine-readable half of the headline: a status, a code, a state. */
   eyebrow: string
   title: string
   description: React.ReactNode
   icon: LucideIcon
   tone?: Tone
-  /** The technical line — a URL, a status, an exception message. */
   detail?: string | null
-  /** A live line about what the page is doing while it waits. */
   activity?: React.ReactNode
   actions?: React.ReactNode
   footnote?: React.ReactNode
@@ -64,14 +59,16 @@ export function ErrorScreen({
 }: ErrorScreenProps) {
   return (
     <main className="flex min-h-svh items-center justify-center p-4">
-      <PixelBlast
-        className="fixed inset-0 -z-10 backdrop-blur-4xl"
-        variant="circle"
-        pixelSize={8}
-        speed={0}
-        fpsCap={10}
-        enableRipples={false}
-      />
+      <React.Suspense fallback={null}>
+        <PixelBlast
+          className="fixed inset-0 -z-10 backdrop-blur-4xl"
+          variant="circle"
+          pixelSize={8}
+          speed={0}
+          fpsCap={10}
+          enableRipples={false}
+        />
+      </React.Suspense>
       <div className="flex w-full max-w-sm flex-col gap-3 items-center">
         <Card
           className={cn(
@@ -125,11 +122,6 @@ export function ErrorScreen({
   )
 }
 
-/**
- * The "still trying" line. A dot that pulses rather than a countdown, because a
- * ticking number is a promise about a schedule the retry does not actually
- * keep — and rendering one would need a clock this page has no reason to own.
- */
 export function RetryPulse({
   busy,
   children,
@@ -173,7 +165,6 @@ export function RetryButton({
   )
 }
 
-/** A route threw something the page below could not handle. */
 export function RouteErrorScreen({ error }: { error: Error }) {
   const router = useRouter()
   const [reloading, setReloading] = React.useState(false)
@@ -216,10 +207,7 @@ export function RouteErrorScreen({ error }: { error: Error }) {
   )
 }
 
-/** A URL that names nothing — a stale bookmark, or a machine since removed. */
 export function NotFoundScreen() {
-  // Read through the router rather than off `window`: the address is state the
-  // router already owns, and reading the global during render is not pure.
   const { pathname } = useLocation()
 
   return (
@@ -247,21 +235,12 @@ export function NotFoundScreen() {
   )
 }
 
-/**
- * The API failed its own health check — see `BackendGate` for who decides that.
- *
- * Silence and a bad answer are different failures and are worth saying apart: a
- * backend that never replied is usually the deployment (stopped, restarting, a
- * proxy with nothing behind it), while one that replies with a failing status
- * is running but cannot serve — most often its database.
- */
 export function BackendDownScreen({
   status = 0,
   detail,
   busy,
   onRetry,
 }: {
-  /** The health check's response status, or 0 when nothing answered. */
   status?: number
   detail?: string | null
   busy?: boolean

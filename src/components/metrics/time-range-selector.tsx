@@ -70,22 +70,11 @@ function validateRange(range: TimeRange): RangeErrors {
   return errors
 }
 
-/**
- * Applying a window changes the stats query key, so this tree suspends and the
- * route shows its pending skeleton. React does not unmount a tree that suspends
- * after mounting — it hides it and keeps it as-is, which drops the render that
- * would have closed the popup and leaves the popup itself untouched, because it
- * is portalled to the body and never was inside the hidden subtree.
- *
- * Committing the close on its own, before the update that suspends, is what
- * keeps a popup from outliving the page it belongs to.
- */
 function closeThenApply(close: () => void, applyWindow: () => void) {
   flushSync(close)
   applyWindow()
 }
 
-/** Resolve for display only: a half-typed draft must not throw at render. */
 function tryResolve(value: string): Date | undefined {
   try {
     return resolveTimeExpression(value)
@@ -237,7 +226,6 @@ interface RangePickerProps {
   onChange: (range: TimeRange) => void
 }
 
-/** Midnight is the default for a freshly picked day at both ends. */
 function atMidnight(date: Date): Date {
   const result = new Date(date)
   result.setHours(0, 0, 0, 0)
@@ -272,8 +260,6 @@ function RangePicker({
     ? { from: fromDate, to: toDate }
     : undefined
 
-  // The first click of a range leaves `to` open; the existing To expression
-  // (often a relative `now`) stays untouched until a closing day is picked.
   function selectRange(next: DateRange | undefined) {
     if (!next?.from) return
     onChange({
@@ -298,9 +284,6 @@ function RangePicker({
         <CalendarRangeIcon data-icon="inline-start" />
         Pick range
       </PopoverTrigger>
-      {/* Rendered only while open: Base UI would otherwise keep the popup
-          mounted until its exit animation reported back, and that callback
-          never arrives once the tree is frozen behind the skeleton. */}
       {open ? (
         <PopoverContent
           className="w-auto max-w-[calc(100vw-2rem)] gap-0 p-0"
@@ -393,8 +376,6 @@ function QuickRanges({
   const [open, setOpen] = useState(false)
   const recentGroups = TIME_RANGE_PRESET_GROUPS.slice(0, 2)
   const calendarGroup = TIME_RANGE_PRESET_GROUPS[2]
-  // Naming the applied preset on the trigger is what ties the charts to the
-  // window they were drawn from; a hand-typed window has no preset to name.
   const active = findTimeRangePreset(applied)
 
   function select(range: TimeRange) {

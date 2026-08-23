@@ -39,7 +39,6 @@ test("spans the queried window when data starts late or ends early", () => {
     "2026-08-20T04:13:00.000Z",
     "2026-08-20T04:14:00.000Z",
   ])
-  // Padding carries no readings, so the gap stays visible as a break.
   assert.equal(filled[0].cpu_percent, null)
   assert.equal(filled[4].cpu_percent, null)
   assert.equal(filled[2].cpu_percent, 1)
@@ -51,7 +50,6 @@ test("stops one bucket short of To, which the window excludes", () => {
     to: new Date("2026-08-20T04:13:00Z").toISOString(),
   })
 
-  // A bucket stamped 04:13 would cover 04:13–04:14, which is past To.
   assert.deepEqual(stamps(filled), [
     "2026-08-20T04:10:00.000Z",
     "2026-08-20T04:11:00.000Z",

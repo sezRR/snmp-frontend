@@ -132,13 +132,10 @@ test("names the preset an applied window came from", () => {
       )
     }
   }
-  // Whitespace is what a pasted URL search param carries, not a new window.
   assert.equal(
     findTimeRangePreset({ from: " now-1h ", to: " now " })?.label,
     "Last 1 hour"
   )
-  // Absolute windows and rolling ones are different even when they resolve
-  // to the same instant, so a hand-typed window matches no preset.
   assert.equal(findTimeRangePreset({ from: "now-90m", to: "now" }), undefined)
   assert.equal(
     findTimeRangePreset({ from: "2026-08-18 00:00", to: "2026-08-20 00:00" }),

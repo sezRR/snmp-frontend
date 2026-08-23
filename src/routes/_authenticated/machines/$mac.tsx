@@ -51,7 +51,6 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
 
-/** Points kept in the throughput sparkline on the bandwidth card. */
 const SPARKLINE_POINTS = 60
 
 const searchSchema = z
@@ -108,13 +107,8 @@ function MachineDetailPage() {
   const sample = liveSample ?? fallbackSample
   const snapshot = sample ? normalizeSample(sample, machine) : null
 
-  // Same dot as the grid and the sidebar: whether the collector's last poll of
-  // this machine succeeded, which is the one party to the exchange that can
-  // answer without comparing clocks.
   const failing = collectorMachineHealth(collector)[mac]?.failing
 
-  // The live card is exactly that: it starts empty on arrival and fills from
-  // the stream, so it never mixes in history the user did not watch arrive.
   const liveSnapshots = history
     .map((entry) => normalizeSample(entry, machine))
     .slice(-SPARKLINE_POINTS)
@@ -125,8 +119,6 @@ function MachineDetailPage() {
     ? liveSnapshots.filter((entry) => Date.parse(entry.ts) >= windowStart)
     : []
 
-  // Historic buckets plus the live SSE tail, aggregated into the effective
-  // interval selected by the backend.
   const chartPoints = mergeLiveIntoPoints(
     statsResult.rows.map(statsRowToPoint),
     chartLiveSnapshots,
@@ -262,8 +254,6 @@ function MachineDetailPage() {
             from={range.from}
             to={range.to}
             onApply={(next) => {
-              // resetScroll would jump back to the top on every applied window,
-              // losing the chart the user is looking at.
               void navigate({ search: next, resetScroll: false })
               if (next.from === range.from && next.to === range.to) {
                 void refetchStats()

@@ -25,19 +25,9 @@ import { toast } from "sonner"
 
 interface RemoveFromViewDialogProps {
   view: View
-  /** The view's members, already resolved against the registered fleet. */
   members: Machine[]
 }
 
-/**
- * Takes machines out of a view without touching the backend.
- *
- * Deliberately separate from deregistering: dropping a machine from a saved
- * grouping is a local edit and reversible by adding it back, while
- * deregistering stops the polling and destroys the history. Sharing one
- * control for both would make the cheap action wear the expensive one's
- * consequences.
- */
 export function RemoveFromViewDialog({
   view,
   members,

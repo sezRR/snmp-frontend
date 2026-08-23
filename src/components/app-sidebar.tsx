@@ -22,8 +22,6 @@ import { allows, useAuth } from "@/lib/auth/rbac"
 import { Link, useLocation } from "@tanstack/react-router"
 import { Activity, ShieldCheck, Users, Wrench } from "lucide-react"
 
-// The same rules the routes are guarded by, so a link is never offered to a
-// page that would turn the user straight around at /unauthorized.
 const navItems = [
   { title: "Admin", to: "/admin", icon: Wrench, access: ADMIN_ACCESS },
   { title: "Users", to: "/users", icon: Users, access: USERS_ACCESS },

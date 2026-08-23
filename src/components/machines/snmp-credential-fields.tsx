@@ -32,11 +32,6 @@ import {
   snmpCredentialFormSchema,
 } from "@/lib/api/types"
 
-/**
- * The form's own state: every field a string, because that is what an input
- * holds. `parseCredentialDraft` is what turns it into the shape the API takes,
- * dropping the fields the chosen version and security level do not use.
- */
 export interface CredentialDraft {
   name: string
   description: string
@@ -51,10 +46,6 @@ export interface CredentialDraft {
   allow_weak: boolean
 }
 
-/**
- * v3 at authPriv with SHA256/AES128 — the strongest pair every agent this
- * polls actually implements, and the one combination that needs no opt-in.
- */
 export const emptyCredentialDraft: CredentialDraft = {
   name: "",
   description: "",
@@ -71,7 +62,6 @@ export const emptyCredentialDraft: CredentialDraft = {
 
 export type CredentialErrors = Partial<Record<keyof CredentialDraft, string>>
 
-/** Returned profiles omit secrets, so editing starts with those fields blank. */
 export function credentialDraftFrom(
   credential: SnmpCredential
 ): CredentialDraft {
@@ -108,7 +98,6 @@ const CREDENTIAL_SHAPE_FIELDS: (keyof CredentialDraft)[] = [
   "allow_weak",
 ]
 
-/** Whether an edit needs the complete write-only credential shape. */
 export function credentialShapeChanged(
   draft: CredentialDraft,
   credential: SnmpCredential
@@ -144,14 +133,6 @@ export interface ParsedDraft {
   errors: CredentialErrors
 }
 
-/**
- * Validate a draft the way the backend validates the body.
- *
- * The version and the security level decide which fields are even sent: a v2c
- * profile carrying a leftover passphrase from a half-typed v3 one would be
- * rejected, and rightly, so the unused half is dropped here rather than
- * explained to the user.
- */
 export function parseCredentialDraft(draft: CredentialDraft): ParsedDraft {
   const v3 = draft.snmp_version === "3"
   const authed =
@@ -179,8 +160,6 @@ export function parseCredentialDraft(draft: CredentialDraft): ParsedDraft {
   const errors: CredentialErrors = {}
   for (const issue of result.error.issues) {
     const field = issue.path[0]
-    // First message per field: a list of every way one input is wrong reads
-    // as noise next to the input itself.
     if (typeof field === "string" && !(field in errors)) {
       errors[field as keyof CredentialDraft] = issue.message
     }
@@ -188,7 +167,6 @@ export function parseCredentialDraft(draft: CredentialDraft): ParsedDraft {
   return { data: null, errors }
 }
 
-/** Whether the draft asks for something the backend refuses without opt-in. */
 export function draftIsWeak(draft: CredentialDraft): boolean {
   if (draft.snmp_version !== "3") return false
   if (draft.security_level === "noAuthNoPriv") return true
@@ -207,7 +185,6 @@ const SECURITY_LEVEL_LABELS: Record<SecurityLevel, string> = {
   authPriv: "authPriv (authenticated and encrypted)",
 }
 
-/** `items` is what the trigger renders the selected value from. */
 const protocolItems = (
   protocols: readonly string[],
   weak: readonly string[]
@@ -227,16 +204,9 @@ interface SnmpCredentialFieldsProps {
   onChange: (draft: CredentialDraft) => void
   errors?: CredentialErrors
   disabled?: boolean
-  /** Prefix for input ids, so two of these can coexist on one page. */
   idPrefix?: string
 }
 
-/**
- * The credential form itself: an SNMP version, then whatever that version
- * needs. v2c is a community string; v3 is a USM identity whose shape the
- * security level decides, which is why the passphrase fields appear and
- * disappear rather than sitting there greyed out.
- */
 export function SnmpCredentialFields({
   draft,
   onChange,
@@ -472,8 +442,6 @@ export function SnmpCredentialFields({
             </Field>
           ) : null}
 
-          {/* Only offered once something actually needs it: a checkbox that
-              permits MD5 sitting next to SHA256 invites turning it on. */}
           {weak ? (
             <Field orientation="horizontal">
               <Checkbox

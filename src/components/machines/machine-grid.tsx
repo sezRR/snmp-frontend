@@ -6,11 +6,6 @@ import {
   useCollectorStatusQuery,
 } from "@/lib/queries/admin"
 
-/**
- * The card grid shared by the dashboard and saved views. Live samples arrive
- * over one fleet-wide SSE connection; /metrics/latest fills the cards before
- * the first event lands.
- */
 export function MachineGrid({ machines }: { machines: Machine[] }) {
   const { data: collector } = useCollectorStatusQuery()
   const samples = useMachineSamples()

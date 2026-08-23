@@ -21,14 +21,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
 }
 
-/**
- * Loop health and the OpenStack lookup cache, with the two admin actions that
- * unstick a demo: force a collection round, and drop the cache so the next
- * read repopulates it.
- */
 export function CollectorHealthFooter() {
-  // Loop internals are an admin's business; the two buttons are a further step
-  // again, since both make the collector do something.
   const canRead = useHasScope(SCOPES.adminRead)
   const canWrite = useHasScope(SCOPES.adminWrite)
   const { data: collector, isError: collectorFailed } =
@@ -89,10 +82,6 @@ export function CollectorHealthFooter() {
         </div>
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-muted-foreground">
-          {/* The configured period, which is a duration rather than a point on
-              anyone's clock. "Last tick" and a countdown to the next one used
-              to live here; both were this browser's clock minus the
-              collector's, and said more about NTP than about the loop. */}
           {typeof collector?.interval_seconds === "number" ? (
             <>
               <dt>Interval</dt>

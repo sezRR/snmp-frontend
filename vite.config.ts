@@ -7,19 +7,12 @@ import { defineConfig, loadEnv } from "vite"
 
 import { mockSnmpApi } from "./dev/mock-snmp-api"
 
-// https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_")
-  // Same defaulting the client does, so the mock is mounted where the bundle
-  // will look for it.
   const apiPrefix = env.VITE_API_PREFIX ?? "/api"
-  // A real backend is configured: every request leaves this origin, and the
-  // mock would never be consulted.
   const useMock = !env.VITE_API_BASE_URL
 
   if (useMock && !apiPrefix) {
-    // Mounting the mock at "/" would answer /machines with JSON before the SPA
-    // fallback ever saw it, so this is refused rather than half-worked.
     throw new Error(
       "The mock API needs a non-empty VITE_API_PREFIX (use /api), or set VITE_API_BASE_URL to reach a real backend."
     )
@@ -41,6 +34,26 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
+      },
+    },
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: "three",
+                test: /node_modules[\\/]three[\\/]/,
+                priority: 20,
+              },
+              {
+                name: "postprocessing",
+                test: /node_modules[\\/]postprocessing[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
       },
     },
   }

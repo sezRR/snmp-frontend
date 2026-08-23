@@ -100,7 +100,6 @@ function parseAbsoluteTime(match: RegExpExecArray): Date {
   return result
 }
 
-/** Resolve one Zabbix-style expression against a shared notion of now. */
 export function resolveTimeExpression(value: string, now = new Date()): Date {
   const expression = value.trim()
   const relative = RELATIVE_TIME.exec(expression)
@@ -140,7 +139,6 @@ export function isTimeExpression(value: string): boolean {
   }
 }
 
-/** A relative To keeps moving; only exactly `now` receives the SSE tail. */
 export function isRelativeTime(value: string): boolean {
   return RELATIVE_TIME.test(value.trim())
 }
@@ -149,7 +147,6 @@ export function isLiveTimeRange(range: TimeRange): boolean {
   return range.to.trim() === "now"
 }
 
-/** Format a Date for the browser-local absolute syntax accepted above. */
 export function formatAbsoluteTime(date: Date): string {
   if (Number.isNaN(date.getTime())) throw new Error("Invalid date")
   const pad = (value: number) => String(value).padStart(2, "0")
@@ -159,7 +156,6 @@ export function formatAbsoluteTime(date: Date): string {
   ].join(" ")
 }
 
-/** Parse the effective preset returned in X-Metrics-Bucket. */
 export function bucketDurationMs(value: string): number {
   const match = BUCKET_DURATION.exec(value.trim())
   if (!match) throw new Error(`Invalid X-Metrics-Bucket header: ${value}`)

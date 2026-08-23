@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import * as React from "react"
 
-/** Amber at 80%, red at 90% — the usual "act now" thresholds for a filesystem. */
 function barColor(percent: number | null): string {
   if (percent === null) return "bg-muted-foreground/40"
   if (percent >= 90) return "bg-destructive"
@@ -20,18 +19,11 @@ function barColor(percent: number | null): string {
   return "bg-chart-5"
 }
 
-/**
- * Mounts shown before the list is folded. A host can report dozens — every
- * container overlay, every bind mount — and a card that lists them all buries
- * the metrics beside it. Five is enough to cover a normal machine whole.
- */
 const COLLAPSED_MOUNTS = 5
 
 export function DiskCard({ disks }: { disks: DiskReading[] }) {
   const [expanded, setExpanded] = React.useState(false)
 
-  // Fullest first, so the mounts that survive the fold are the ones nearest
-  // to filling up. A mount that reported no usage sorts last: it says nothing.
   const ordered = [...disks].sort(
     (a, b) => (b.usedPercent ?? -1) - (a.usedPercent ?? -1)
   )
@@ -57,8 +49,6 @@ export function DiskCard({ disks }: { disks: DiskReading[] }) {
           <div
             className={cn(
               "flex flex-col gap-3",
-              // Expanded, the list is as long as the host is creative. Capping
-              // it keeps this card the size of the ones beside it.
               !folded &&
                 ordered.length > COLLAPSED_MOUNTS &&
                 "max-h-72 overflow-y-auto pr-1"

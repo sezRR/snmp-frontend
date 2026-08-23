@@ -24,7 +24,6 @@ import { toast } from "sonner"
 interface ViewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Omit to create; pass a view to edit it in place. */
   view?: View
   onSaved?: (view: View) => void
 }
@@ -40,7 +39,6 @@ export function ViewDialog({
   const [macs, setMacs] = React.useState<string[]>(view?.macs ?? [])
   const [error, setError] = React.useState<string | null>(null)
 
-  // Reopening for a different view has to reload the form.
   const [lastView, setLastView] = React.useState(view)
   if (view !== lastView) {
     setLastView(view)
@@ -62,8 +60,6 @@ export function ViewDialog({
     const saved = saveView({ id: view?.id, name: name.trim(), macs })
     toast.success(`View "${saved.name}" saved`)
     onOpenChange(false)
-    // Only a freshly created view is worth navigating to; editing one should
-    // leave the user where they were.
     if (!view) onSaved?.(saved)
   }
 

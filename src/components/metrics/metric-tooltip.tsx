@@ -2,17 +2,12 @@ import type { ChartTooltipContent } from "@/components/ui/chart"
 import { formatDateTime } from "@/lib/format"
 import type * as React from "react"
 
-// Recharts identifies chart children by component type, so a shared <Tooltip>
-// wrapper would be ignored. The renderers are shared instead, which is what
-// keeps every chart's hover card looking the same.
-
 type ContentProps = React.ComponentProps<typeof ChartTooltipContent>
 type Formatter = NonNullable<ContentProps["formatter"]>
 
 export const metricTooltipLabelFormatter = (value: unknown): string =>
   formatDateTime(String(value))
 
-/** One row per series: colour swatch, series name, right-aligned value. */
 export function metricTooltipFormatter(
   labels: Record<string, string>,
   valueFormatter: (value: number) => string

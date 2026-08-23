@@ -26,12 +26,6 @@ interface ChangePasswordDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-/**
- * Self-service password change. The current password is required — that is
- * what stops a stolen access token from being enough to take an account over —
- * and the backend ends every other session and returns a fresh token pair, so
- * this tab stays signed in while the others do not.
- */
 export function ChangePasswordDialog({
   open,
   onOpenChange,

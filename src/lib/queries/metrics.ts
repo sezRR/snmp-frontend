@@ -31,14 +31,6 @@ export const metricsQueryKey = ["metrics"] as const
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
-/**
- * The most recent sample per machine — what the dashboard opens with, and the
- * fallback for machines the stream has not reported.
- *
- * useLiveMetricsSync writes each streamed sample into this cache, so the
- * interval below is not how the read-outs stay current; it is the safety net
- * for a stream that is down, and long enough not to duplicate its work.
- */
 export const latestMetricsQueryOptions = () =>
   queryOptions({
     queryKey: [...metricsQueryKey, "latest"] as const,
@@ -75,8 +67,6 @@ export const metricStatsQueryOptions = (mac: string, range: TimeRange) => {
       }
     },
     staleTime: 60_000,
-    // Relative windows are resolved again on each request. Absolute windows are
-    // snapshots and do not need polling after their first successful read.
     refetchInterval: (query) =>
       isRelativeTime(to)
         ? clamp(query.state.data?.intervalMs ?? 60_000, 30_000, 300_000)
@@ -91,7 +81,6 @@ export const metricCountsQueryOptions = () =>
     staleTime: 30_000,
   })
 
-/** Row counts, for a caller that may read metric history at all. */
 export function useMetricCountsQuery() {
   const allowed = useHasScope(SCOPES.metricsRead)
   return useQuery({ ...metricCountsQueryOptions(), enabled: allowed })
@@ -132,7 +121,6 @@ export function samplesByMac(
   return Object.fromEntries(samples.map((sample) => [sample.mac, sample]))
 }
 
-/** /metrics/counts is loosely typed; read whichever key the backend used. */
 export function readSampleCount(count: {
   samples?: number | null
   rows?: number | null

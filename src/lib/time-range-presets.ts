@@ -55,12 +55,6 @@ export const TIME_RANGE_PRESET_GROUPS = [
   },
 ] satisfies TimeRangePresetGroup[]
 
-/**
- * The preset an applied window came from, so the trigger can name it. Presets
- * are matched by expression, not by resolved instant: `now-1h` and the absolute
- * hour it happens to resolve to right now are different windows — only the
- * first keeps rolling.
- */
 export function findTimeRangePreset(
   range: TimeRange
 ): TimeRangePreset | undefined {

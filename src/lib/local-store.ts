@@ -1,11 +1,6 @@
 import * as React from "react"
 import type { z } from "zod"
 
-// Client-owned, disposable state (saved views, UI preferences). It
-// never reaches the backend, so it lives in localStorage and is validated on
-// read — a hand-edited or stale entry falls back to the default instead of
-// crashing the sidebar.
-
 export interface LocalStore<T> {
   get: () => T
   set: (next: T | ((prev: T) => T)) => void
@@ -37,12 +32,10 @@ export function createLocalStore<T>(
     try {
       localStorage.setItem(key, JSON.stringify(value))
     } catch {
-      // quota or private mode; the in-memory value still drives this tab
     }
     for (const listener of listeners) listener()
   }
 
-  // Other tabs edit the same key; drop the cache so the next read re-parses.
   const handleStorage = (event: StorageEvent) => {
     if (event.key !== null && event.key !== key) return
     cached = undefined

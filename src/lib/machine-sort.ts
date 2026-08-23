@@ -36,7 +36,6 @@ export const DEFAULT_SORT: SortKey = "name"
 
 const TEXT_KEYS: SortKey[] = ["name", "tenant", "user", "flavor"]
 
-/** Names read best A→Z; a "worst offender" metric reads best highest-first. */
 export function defaultDirection(key: SortKey): SortDirection {
   return TEXT_KEYS.includes(key) ? "asc" : "desc"
 }
@@ -72,11 +71,6 @@ function textValue(machine: Machine, key: SortKey): string {
   return machineFacet(machine, "flavor")
 }
 
-/**
- * Sorts a copy. Machines with nothing to compare on — no sample yet, or no
- * OpenStack record — always sink to the bottom regardless of direction, so
- * flipping the arrow never buries the machines that do have data.
- */
 export function sortMachines(
   machines: Machine[],
   key: SortKey,
@@ -99,7 +93,6 @@ export function sortMachines(
         return (left - right) * sign
       }
     }
-    // Stable, readable tiebreak so equal values keep a predictable order.
     return machineName(a).localeCompare(machineName(b))
   })
 }

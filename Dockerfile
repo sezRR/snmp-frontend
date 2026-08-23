@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# ---- dependencies ---------------------------------------------------------
 FROM node:24-alpine AS dependencies
 
 RUN npm install --global pnpm@11
@@ -10,7 +9,6 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# ---- development ----------------------------------------------------------
 FROM dependencies AS development
 
 COPY . .
@@ -19,30 +17,18 @@ EXPOSE 5173
 
 CMD ["pnpm", "dev", "--host", "0.0.0.0"]
 
-# ---- build ----------------------------------------------------------------
 FROM development AS build
 
-# Left empty on purpose: the bundle then calls /api on its own origin and
-# Traefik routes that prefix to the backend, so one image works for every
-# environment. Set it only when the frontend must talk to a different origin
-# directly, which then needs CORS on the backend.
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-# The path the API answers on, off whichever origin the line above picked. The
-# backend itself serves at the root, so this prefix is the proxy's convention:
-# Traefik routes /api onward and strips it. Build with an empty value to talk to
-# a backend directly.
 ARG VITE_API_PREFIX="/api"
 ENV VITE_API_PREFIX=$VITE_API_PREFIX
 
 RUN pnpm build
 
-# ---- serve ----------------------------------------------------------------
 FROM nginx:1.29-alpine AS runtime
 
-# Static assets only — Traefik owns the reverse proxy, so this config needs no
-# runtime templating.
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 

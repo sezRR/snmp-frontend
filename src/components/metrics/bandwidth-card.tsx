@@ -14,7 +14,6 @@ interface BandwidthCardProps {
   latest: MetricsSnapshot | null
 }
 
-/** Latest throughput only — history lives in the bandwidth chart below. */
 export function BandwidthCard({ latest }: BandwidthCardProps) {
   const net = latest?.net ?? null
   const speed = net?.speedBps ?? null
@@ -75,7 +74,6 @@ function Direction({
           {bps === null ? "n/a" : formatBps(bps)}
         </span>
       </div>
-      {/* Against the link speed, so a number has a ceiling to mean something. */}
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
           className={cn("h-full rounded-full transition-[width]", barClass)}

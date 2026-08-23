@@ -1,10 +1,6 @@
 import { createLocalStore, useLocalStore } from "@/lib/local-store"
 import { z } from "zod"
 
-// A view is a named subset of the fleet. It is the client's own scratch state:
-// the backend has no concept of it, so views live in localStorage and are
-// disposable by design.
-
 export const viewSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -36,7 +32,6 @@ export function saveView(view: Omit<View, "id"> & { id?: string }): View {
   return saved
 }
 
-/** Adds machines to a view, ignoring the ones already in it. */
 export function addMachinesToView(id: string, macs: string[]): void {
   viewsStore.set((previous) =>
     previous.map((view) =>
@@ -47,10 +42,6 @@ export function addMachinesToView(id: string, macs: string[]): void {
   )
 }
 
-/**
- * Drops machines from one view. The machines stay registered and keep being
- * polled; only this view's membership changes.
- */
 export function removeMachinesFromView(id: string, macs: string[]): void {
   const dropped = new Set(macs)
   viewsStore.set((previous) =>
@@ -62,11 +53,6 @@ export function removeMachinesFromView(id: string, macs: string[]): void {
   )
 }
 
-/**
- * Drops a machine from every view it appears in — what a deregistration means
- * for the client's own grouping. Views are stored by MAC, so without this a
- * deleted machine would linger as a saved reference that can never resolve.
- */
 export function removeMachineFromViews(mac: string): void {
   viewsStore.set((previous) =>
     previous.map((view) =>
@@ -81,7 +67,6 @@ export function deleteView(id: string): void {
   viewsStore.set((previous) => previous.filter((view) => view.id !== id))
 }
 
-/** Drops machines that no longer exist, so a deleted machine can't ghost a view. */
 export function pruneViews(knownMacs: string[]): void {
   const known = new Set(knownMacs)
   viewsStore.set((previous) =>

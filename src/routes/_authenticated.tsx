@@ -11,33 +11,24 @@ import { useLiveMetricsSync } from "@/hooks/use-live-sync"
 import { useHasScope } from "@/lib/auth/rbac"
 import { requireSession } from "@/lib/auth/route-guards"
 import { SCOPES } from "@/lib/auth/scopes"
+import { sanitizeReturnTo } from "@/lib/auth/search"
 import { useSession } from "@/lib/auth/session"
 import { meQueryOptions } from "@/lib/queries/auth"
 import {
-  Navigate,
   Outlet,
   createFileRoute,
   useLocation,
+  useNavigate,
+  useRouterState,
 } from "@tanstack/react-router"
+import * as React from "react"
 
-/**
- * Everything behind sign-in: the application shell, and the guard in front of
- * it. A pathless layout, so the URLs underneath are unchanged — `/machines` is
- * still `/machines`.
- */
 export const Route = createFileRoute("/_authenticated")({
-  // Only "is there a session at all". What that session may *do* is asked
-  // further down, by the routes that care — see `_console` and its pages.
   beforeLoad: requireSession,
   loader: async ({ context }) => {
-    // Resolved before the first page renders so scope-gated actions do not
-    // flash out of existence on every navigation. A failure is not fatal: the
-    // pages render read-only and the guard below handles a dead session.
     try {
       await context.queryClient.ensureQueryData(meQueryOptions())
-    } catch {
-      // an unreachable backend, or credentials that no longer work
-    }
+    } catch {}
   },
   component: AuthedLayout,
 })
@@ -46,17 +37,37 @@ function AuthedLayout() {
   const session = useSession()
   const canReadMetrics = useHasScope(SCOPES.metricsRead)
   const location = useLocation()
+  const navigate = useNavigate()
+  const routerIsLoading = useRouterState({ select: (state) => state.isLoading })
+  const redirectStarted = React.useRef(false)
 
-  // One place feeds every page's "latest sample" cache from the stream. The
-  // stream costs a ticket per connection, so it is not opened for a user who
-  // could not read metrics with it.
   useLiveMetricsSync(session !== null && canReadMetrics)
 
-  // The session can end while the app is mounted: a refresh token the backend
-  // refuses, or a sign-out in another tab.
-  if (!session) {
-    return <Navigate to="/login" search={{ redirect: location.href }} replace />
-  }
+  // The last address that was actually behind the guard. `Navigate` re-runs on
+  // every render, and by the time it does the location is already /login — so
+  // reading it live would send /login back to itself, nesting one encoded copy
+  // of the URL inside the next until React gives up.
+  const [returnTo, setReturnTo] = React.useState(location.href)
+  if (session && returnTo !== location.href) setReturnTo(location.href)
+
+  React.useEffect(() => {
+    if (session) {
+      redirectStarted.current = false
+      return
+    }
+    // A pending route guard owns redirects caused by its identity refresh.
+    if (routerIsLoading) return
+    if (redirectStarted.current) return
+
+    redirectStarted.current = true
+    void navigate({
+      to: "/login",
+      search: { redirect: sanitizeReturnTo(returnTo) },
+      replace: true,
+    })
+  }, [navigate, returnTo, routerIsLoading, session])
+
+  if (!session) return null
 
   return (
     <SidebarProvider>

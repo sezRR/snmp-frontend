@@ -33,10 +33,18 @@ const searchSchema = z.object({ redirect: returnToSchema })
 
 export const Route = createFileRoute("/login")({
   validateSearch: searchSchema,
-  beforeLoad: ({ search }) => {
-    // Already signed in: there is nothing to do here.
+  beforeLoad: ({ search, location }) => {
     if (hasSession()) {
-      throw redirect({ to: search.redirect ?? "/" })
+      throw search.redirect
+        ? redirect({ href: search.redirect })
+        : redirect({ to: "/" })
+    }
+    if (!search.redirect && location.searchStr) {
+      throw redirect({
+        to: "/login",
+        search: { redirect: undefined },
+        replace: true,
+      })
     }
   },
   component: LoginPage,
@@ -64,13 +72,11 @@ function LoginPage() {
     login.mutate(parsed.data, {
       onSuccess: () => {
         toast.success("Signed in successfully")
-        void navigate({ to: returnTo ?? "/" })
+        void (returnTo ? navigate({ href: returnTo }) : navigate({ to: "/" }))
       },
     })
   }
 
-  // 401 is the wrong password, and saying so is the useful answer; anything
-  // else is the backend having a bad day and its own message is better.
   const failure =
     login.error instanceof ApiError
       ? login.error.status === 401
@@ -108,9 +114,6 @@ function LoginPage() {
             SNMP Telemetry Observability Platform
           </CardDescription>
         </CardHeader>
-        {/* The form spans content and footer so the submit button can live in
-            the footer strip and still submit the fields above it. Laid out with
-            the card's own spacing variable, so the seam is invisible. */}
         <form
           onSubmit={handleSubmit}
           className="flex flex-col gap-(--card-spacing)"

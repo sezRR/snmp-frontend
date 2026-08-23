@@ -29,13 +29,11 @@ function Stat({ label, value, detail }: Tile) {
   )
 }
 
-/** Fleet totals, including RAM against the sum of the machines' limits. */
 export function FleetSummary({
   machines,
   servers,
 }: {
   machines: Machine[]
-  /** The full OpenStack fleet, when known — omitted inside saved views. */
   servers?: ServerInfo[]
 }) {
   const { data: latest } = useQuery(latestMetricsQueryOptions())
@@ -49,9 +47,6 @@ export function FleetSummary({
     })
     .filter((snapshot) => snapshot !== null)
 
-  // Every machine the collector has ever produced a sample for. Ageing those
-  // samples against the browser's clock is what this used to do, and on a fleet
-  // where NTP is optional it counted clock drift rather than silence.
   const reporting = snapshots.length
 
   const cpuValues = snapshots

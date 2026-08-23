@@ -49,11 +49,6 @@ function Expression({ children }: { children: string }) {
   )
 }
 
-/**
- * The expression grammar is small but not guessable — `/` flooring and the
- * case-sensitive m/M pair in particular — so the rules sit next to the field
- * that accepts them rather than in a tooltip nobody opens.
- */
 export function TimeExpressionHelp({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
 

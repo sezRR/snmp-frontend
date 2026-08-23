@@ -3,7 +3,6 @@ import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
 
-// Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
 
 const INITIAL_DIMENSION = { width: 320, height: 200 } as const
@@ -36,13 +35,6 @@ function useChart() {
   return context
 }
 
-/**
- * Collapsing the sidebar animates the chart's width for 200ms, and an
- * undebounced container redraws every series on every resize observation of
- * that animation — several charts of a few hundred points each, per frame.
- * Debouncing trades one redraw shortly after the transition settles for all
- * the dropped frames in between.
- */
 const RESIZE_DEBOUNCE_MS = 120
 
 function ChartContainer({
@@ -115,8 +107,6 @@ function ChartContainer({
         height: Math.round(height),
       }
 
-      // Suspense hides the mounted route with display:none. Keep the last valid
-      // size instead of letting a transient 0x0 observation remove the chart.
       if (next.width <= 0 || next.height <= 0) {
         return
       }

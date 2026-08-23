@@ -24,10 +24,6 @@ interface FleetBreakdownProps {
 
 const facets = Object.keys(FACET_LABELS) as FacetKey[]
 
-/**
- * How the OpenStack fleet splits by tenant, owner, subnet and flavor, with the
- * registered-here count against each group's total. Rows double as filters.
- */
 export function FleetBreakdown({
   machines,
   servers,

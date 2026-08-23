@@ -5,12 +5,6 @@ import type {
   MetricsPayload,
 } from "@/lib/api/types"
 
-// The collector's jsonb payload is nested and every field is optional, so the
-// UI works against this flat, fully-resolved view instead of poking at the raw
-// object. Absolute byte counts come from the payload when the agent reports
-// them and are otherwise reconstructed from the OpenStack flavor, which is the
-// machine's real ceiling.
-
 const MIB = 1024 ** 2
 const GIB = 1024 ** 3
 
@@ -18,7 +12,6 @@ export interface RamReading {
   usedBytes: number | null
   totalBytes: number | null
   usedPercent: number | null
-  /** The total came from the OpenStack flavor rather than the agent. */
   totalFromFlavor: boolean
 }
 
@@ -49,7 +42,6 @@ export interface NetInterfaceReading {
 export interface NetReading {
   rxBps: number | null
   txBps: number | null
-  /** Highest link speed reported, for a utilization read-out. */
   speedBps: number | null
   rxUtilPercent: number | null
   txUtilPercent: number | null
@@ -63,9 +55,7 @@ export interface MetricsSnapshot {
   cpuCores: number | null
   ram: RamReading
   disks: DiskReading[]
-  /** Root filesystem when reported, else the fullest mount. */
   primaryDisk: DiskReading | null
-  /** Whole-machine disk IO: reported as a total, else summed over the mounts. */
   diskIo: DiskIoReading
   net: NetReading
 }
@@ -95,7 +85,6 @@ function pickPrimaryDisk(disks: DiskReading[]): DiskReading | null {
   )
 }
 
-/** Null unless at least one part was reported; a missing part counts as zero. */
 function sumReported(values: (number | null)[]): number | null {
   const present = values.filter((value) => value !== null)
   if (present.length === 0) return null
@@ -137,8 +126,6 @@ export function normalizeSample(
     }
   })
 
-  // A reported total wins over the per-mount sum: mounts on one device would
-  // otherwise count the same physical IO twice.
   const diskIo: DiskIoReading = {
     readBps:
       num(diskIoTotal?.read_bps) ?? sumReported(disks.map((d) => d.readBps)),
@@ -192,8 +179,6 @@ function readNet(net: MetricsPayload["network"]): NetReading {
     rxBps,
     txBps,
     speedBps,
-    // The agent reports utilization per interface; recompute against the link
-    // when only totals are present.
     rxUtilPercent:
       maxUtil(interfaces, "rxUtilPercent") ?? percentOf(rxBps, speedBps),
     txUtilPercent:
@@ -212,9 +197,6 @@ function maxUtil(
   return values.length > 0 ? Math.max(...values) : null
 }
 
-// --- Chart points ---------------------------------------------------------
-
-/** One point on the history charts, from a stats bucket or a live sample. */
 export interface ChartPoint {
   ts: string
   cpu_percent: number | null

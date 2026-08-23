@@ -75,10 +75,8 @@ function ViewPage() {
     )
   }
 
-  // A machine deleted since the view was saved simply drops out of it.
   const members = machines.filter((machine) => view.macs.includes(machine.mac))
   const memberMacs = new Set(members.map((machine) => machine.mac))
-  // Scope the group totals to the view, so "2 / 3" means within this view.
   const memberServers = (servers ?? []).filter((entry) =>
     memberMacs.has(entry.mac)
   )
@@ -100,13 +98,10 @@ function ViewPage() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Registering from inside a view assigns the machine to it. */}
           <AddMachineDialog view={view} />
           {members.length > 0 ? (
             <>
               <RemoveFromViewDialog view={view} members={members} />
-              {/* Scoped to the view: bulk deregistration here cannot reach a
-                  machine the user is not looking at. */}
               <DeregisterMachinesDialog machines={members} />
             </>
           ) : null}
@@ -133,7 +128,6 @@ function ViewPage() {
         </Empty>
       ) : (
         <>
-          {/* No OpenStack tile here: every member is registered by definition. */}
           <FleetSummary machines={members} />
           <MachineToolbar
             machines={members}

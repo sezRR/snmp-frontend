@@ -10,7 +10,6 @@ import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 import * as React from "react"
 
-/** Days back, as the shortcuts a retention decision is usually phrased in. */
 const PRESETS: { label: string; days: number }[] = [
   { label: "1 day", days: 1 },
   { label: "7 days", days: 7 },
@@ -29,16 +28,9 @@ interface PurgeCutoffFieldProps {
   value: Date | undefined
   onChange: (value: Date | undefined) => void
   disabled?: boolean
-  /** Extra note about how the cutoff is honoured on this endpoint. */
   description?: string
 }
 
-/**
- * "Delete samples older than …" — no date means every stored sample.
- *
- * The cutoff is the selected day at local midnight, so picking a date deletes
- * everything stamped before that day began.
- */
 export function PurgeCutoffField({
   id,
   value,
@@ -72,8 +64,6 @@ export function PurgeCutoffField({
             autoFocus
             captionLayout="dropdown"
             selected={value}
-            // A cutoff in the future would purge everything, which the empty
-            // state already expresses more honestly.
             disabled={{ after: new Date() }}
             onSelect={(date) => {
               onChange(date)

@@ -41,7 +41,6 @@ interface ViewsNavProps {
   onOpenChange: (open: boolean) => void
 }
 
-/** Client-side saved subsets of the fleet, kept in localStorage. */
 export function ViewsNav({ open, onOpenChange }: ViewsNavProps) {
   const views = useViews()
   const navigate = useNavigate()

@@ -60,9 +60,6 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 function AdminPage() {
-  // Reading the collector and the cache is `admin:read`; making either of them
-  // do something is `admin:write`; the sample counts and the purge are the
-  // metrics scopes, which an admin does not automatically hold.
   const canRead = useHasScope(SCOPES.adminRead)
   const canWrite = useHasScope(SCOPES.adminWrite)
   const canReadMachines = useHasScope(SCOPES.machinesRead)
@@ -87,12 +84,17 @@ function AdminPage() {
 
   const health = Object.values(collectorMachineHealth(collector))
   const ticks = collector?.tick_count ?? collector?.ticks
-  // What the last round did, which is the first thing worth knowing when
-  // every machine reads zero samples.
+  const skipped = collector?.last_skipped ?? 0
   const lastRound =
     typeof collector?.last_inserted === "number" ||
     typeof collector?.last_failed === "number"
-      ? `${collector.last_inserted ?? 0} stored / ${collector.last_failed ?? 0} failed`
+      ? [
+          `${collector.last_inserted ?? 0} stored`,
+          `${collector.last_failed ?? 0} failed`,
+          // Only when it happened: a permanent "0 skipped" trains the eye to
+          // ignore the field, and skipping is the interesting state.
+          ...(skipped > 0 ? [`${skipped} waiting`] : []),
+        ].join(" / ")
       : null
 
   const labelFor = (mac: string) => {
@@ -145,10 +147,6 @@ function AdminPage() {
           ) : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {/* Counters and durations only. "Last tick N ago" and a countdown to
-              the next round were both this browser's clock minus the
-              collector's, which on a fleet without reliable NTP measured the
-              disagreement rather than the loop. */}
           <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <Fact
               label="State"
@@ -185,9 +183,6 @@ function AdminPage() {
                     <span className="flex-1 truncate">
                       {labelFor(entry.mac)}
                     </span>
-                    {/* Shown whenever the collector still remembers it: an
-                        error that has since been superseded by a good poll is
-                        history, so the dot above is what says "now". */}
                     {entry.lastError ? (
                       <span className="truncate text-xs text-destructive">
                         {entry.lastError}
@@ -195,6 +190,11 @@ function AdminPage() {
                           ? ` · ${formatTimestamp(entry.lastErrorAt)}`
                           : null}
                       </span>
+                    ) : null}
+                    {typeof entry.retryInSeconds === "number" ? (
+                      <Badge variant="outline" className="whitespace-nowrap">
+                        retry in {formatDuration(entry.retryInSeconds)}
+                      </Badge>
                     ) : null}
                     <Badge variant="secondary">{entry.okCount ?? 0} ok</Badge>
                     <Badge
@@ -355,9 +355,6 @@ function AdminPage() {
             value={cutoff}
             onChange={setCutoff}
             disabled={purgeAll.isPending}
-            // The fleet-wide purge drops whole chunks rather than rows, so the
-            // cutoff is honoured chunk-granularly and a chunk straddling it
-            // survives intact.
             description="Whole chunks older than this are dropped, so some slightly newer samples can survive."
           />
           <DialogFooter className="mt-2">

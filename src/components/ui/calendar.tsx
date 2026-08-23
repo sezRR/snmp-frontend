@@ -196,10 +196,7 @@ function CalendarDayButton({
   const defaultClassNames = getDefaultClassNames()
 
   const ref = React.useRef<HTMLButtonElement>(null)
-  // Upstream shadcn: react-day-picker reports the focused day through
-  // modifiers, and moving focus to it is a DOM effect the parent cannot do.
   React.useEffect(() => {
-    // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler
     if (modifiers.focused) ref.current?.focus()
   }, [modifiers.focused])
 

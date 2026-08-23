@@ -29,11 +29,6 @@ export const credentialsQueryOptions = () =>
     staleTime: 60_000,
   })
 
-/**
- * The saved profiles. Reading them is `credentials:read`, which a machines-only
- * role does not hold — polling it anyway would beat on a 403, so the query is
- * gated and the UI treats "not allowed" as "no profiles to pick from".
- */
 export function useCredentialsQuery({ enabled = true } = {}) {
   const allowed = useHasScope(SCOPES.credentialsRead)
   return useQuery({ ...credentialsQueryOptions(), enabled: enabled && allowed })
@@ -44,17 +39,10 @@ function useInvalidateCredentials() {
   return () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: credentialsQueryKey }),
-      // A bind writes `credential_id` onto the machine, so the machine list is
-      // stale the moment either end of the relationship moves.
       queryClient.invalidateQueries({ queryKey: machinesQueryKey }),
     ])
 }
 
-/**
- * The secret goes up once and is never readable again, so the form is sent
- * whole: empty strings are dropped rather than sent as blanks the backend
- * would have to interpret.
- */
 function credentialBody(form: SnmpCredentialForm): Record<string, unknown> {
   const body: Record<string, unknown> = {
     name: form.name,
@@ -96,10 +84,6 @@ export function useCreateCredentialMutation() {
   })
 }
 
-/**
- * Metadata can be patched alone. A patch that touches any SNMP/USM field has
- * to carry the whole credential shape, which the caller validates first.
- */
 export function useUpdateCredentialMutation() {
   const invalidate = useInvalidateCredentials()
   return useMutation({
@@ -153,14 +137,6 @@ export function useUnbindCredentialMutation() {
   })
 }
 
-/**
- * Poll one machine once, to check a credential works.
- *
- * The address is the machine's own — the endpoint takes no address, and must
- * not, since a stored credential aimed at an arbitrary host is the relay attack
- * the whole design exists to prevent. An unsaved credential in the body is
- * fine: the caller typed the secret, so it tells them nothing new.
- */
 export function useTestCredentialMutation() {
   return useMutation({
     mutationFn: ({
@@ -179,7 +155,6 @@ export function useTestCredentialMutation() {
   })
 }
 
-/** "SNMPv3 · authPriv · SHA256/AES128" — enough to tell two profiles apart. */
 export function credentialSummary(credential: SnmpCredential): string {
   if (credential.snmp_version === "2c") return "SNMPv2c · community"
   const parts = ["SNMPv3", credential.security_level ?? "unknown level"]

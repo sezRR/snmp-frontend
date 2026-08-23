@@ -169,11 +169,6 @@ export function ManageMachineCredentialDialog({
     }
   }
 
-  /**
-   * Bind, then prove it: a profile that binds but cannot walk the machine
-   * leaves it registered and unpolled, so a failed check puts the previous
-   * binding back rather than leaving the machine worse off than it started.
-   */
   const bindProfile = async (profile: SnmpCredential) => {
     const previousCredentialId = currentId
     setFeedback(null)
@@ -278,12 +273,6 @@ export function ManageMachineCredentialDialog({
     }
   }
 
-  /**
-   * The profile is saved before it is bound, so a secret that turns out not to
-   * walk this machine is still on the list to be corrected rather than typed
-   * again. Binding then goes through the same test-and-roll-back path as any
-   * other profile.
-   */
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault()
     const credential = validDraft()
@@ -552,8 +541,6 @@ export function ManageMachineCredentialDialog({
                 Back
               </Button>
               <div className="flex flex-wrap gap-2">
-                {/* Tested against this machine without saving anything, so a
-                    typo costs a walk rather than a profile to clean up. */}
                 <Button
                   type="button"
                   variant="outline"

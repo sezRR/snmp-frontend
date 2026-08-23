@@ -12,12 +12,9 @@ import { Label, PolarRadiusAxis, RadialBar, RadialBarChart } from "recharts"
 interface RadialMetricCardProps {
   title: string
   description?: string
-  /** 0–100, or null while no data has arrived yet */
   value: number | null
   colorVar: string
-  /** Absolute reading behind the percentage, e.g. "10.5 GiB / 16.0 GiB". */
   caption?: string
-  /** Qualifier for the caption, e.g. where the limit came from. */
   footnote?: string
 }
 

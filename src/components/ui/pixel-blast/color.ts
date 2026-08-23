@@ -15,7 +15,6 @@ function toHexChannel(channel: number) {
     .padStart(2, "0")
 }
 
-/** Converts an OKLCh triplet (L 0–1, C, H in degrees) to a `#rrggbb` sRGB string. */
 export function oklchToHex(lightness: number, chroma: number, hue: number) {
   const hueRadians = (hue * Math.PI) / 180
   const a = chroma * Math.cos(hueRadians)
@@ -32,11 +31,6 @@ export function oklchToHex(lightness: number, chroma: number, hue: number) {
   return `#${toHexChannel(gammaEncode(red))}${toHexChannel(gammaEncode(green))}${toHexChannel(gammaEncode(blue))}`
 }
 
-/**
- * Resolves a CSS color for consumers that cannot parse CSS Color 4 — WebGL, canvas,
- * three.js. Accepts `var(--token)` (looked up on `element`) and OKLCh, which is what
- * the theme in `index.css` is authored in. Anything else is passed through untouched.
- */
 export function resolveCssColor(
   value: string,
   element: Element = document.documentElement

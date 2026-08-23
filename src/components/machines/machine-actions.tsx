@@ -79,18 +79,12 @@ export function MachineActions({
   const [ipv4, setIpv4] = React.useState(machine.ipv4)
   const [editError, setEditError] = React.useState<string | null>(null)
 
-  // Each item costs its own scope: machine edits and deregistration are
-  // `machines:write`, credentials have their own write scope, purging is
-  // `metrics:write`, and a forced round is `admin:write`. Removing from a view
-  // is local state and costs nothing.
   const canEdit = useHasScope(SCOPES.machinesWrite)
   const canManageCredential = useHasScope(SCOPES.credentialsWrite)
   const canPurge = useHasScope(SCOPES.metricsWrite)
   const canTick = useHasScope(SCOPES.adminWrite)
 
   const navigate = useNavigate()
-  // Only the machine's own detail page has to be left behind after a delete;
-  // from a list the row just disappears and the user stays put.
   const { mac: openMac, viewId } = useParams({ strict: false })
   const viewAction = includeViewAction ? viewId : undefined
   const update = useUpdateMachineMutation()
@@ -101,8 +95,6 @@ export function MachineActions({
   const handleEdit = (event: React.FormEvent) => {
     event.preventDefault()
 
-    // Only an external machine's address is ours to move: OpenStack owns a
-    // managed one and the collector re-reads it on the next tick.
     const address = ipv4.trim()
     const movedTo =
       machine.external && address !== machine.ipv4 ? address : undefined
@@ -144,8 +136,6 @@ export function MachineActions({
     )
   }
 
-  // There is no per-machine retry endpoint; forcing a collection round is the
-  // way to re-poll a machine that just started failing.
   const handleRetry = () => {
     tick.mutate(undefined, {
       onSuccess: () => toast.success("Collection round triggered"),
@@ -172,8 +162,6 @@ export function MachineActions({
   const handleDelete = () => {
     remove.mutate(machine.mac, {
       onSuccess: () => {
-        // The machine is gone from the backend; leaving it saved in a view
-        // would keep a reference nothing can ever resolve.
         removeMachineFromViews(machine.mac)
         toast.success(`Deregistered ${machineName(machine)}`)
         setConfirmingDelete(false)
@@ -184,7 +172,6 @@ export function MachineActions({
     })
   }
 
-  // An empty menu is worse than no menu.
   if (
     !canEdit &&
     !canManageCredential &&
@@ -244,7 +231,6 @@ export function MachineActions({
                 Retry now
               </DropdownMenuItem>
             ) : null}
-            {/* Only on a view page, where "remove" has somewhere to mean. */}
             {viewAction ? (
               <DropdownMenuItem
                 onClick={() => {
@@ -350,7 +336,6 @@ export function MachineActions({
               stays registered and keeps being polled.
             </DialogDescription>
           </DialogHeader>
-          {/* Per-machine purges delete rows, so the cutoff is exact here. */}
           <PurgeCutoffField
             id="machine-purge-cutoff"
             value={cutoff}

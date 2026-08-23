@@ -34,15 +34,12 @@ interface MetricsLineChartProps {
   data: ChartPoint[]
   series: SeriesDef[]
   intervalMs: number
-  /** The window the stats query resolved, so the axis can span all of it. */
   queryWindow: BucketWindow
   valueFormatter: (value: number) => string
   yDomain?: [number, number]
 }
 
 function tickFormatterFor(rangeMs: number) {
-  // 24-hour, like every other timestamp in the app: axis ticks are read at a
-  // glance and an AM/PM suffix is both wider and easier to misread.
   const timeOnly: Intl.DateTimeFormatOptions = {
     hour: "2-digit",
     minute: "2-digit",
@@ -65,8 +62,6 @@ interface DotRenderProps {
   index?: number
 }
 
-// With the line broken at gaps, a bucket that stands alone between two silent
-// ones draws no segment at all — it needs its own dot to be visible.
 function isolatedPointDot(
   data: ChartPoint[],
   dataKey: SeriesDef["dataKey"],
@@ -110,8 +105,6 @@ export function MetricsLineChart({
 
   const xTickFormatter = tickFormatterFor(rangeMs)
 
-  // Missing buckets are what an outage looks like in the data, so they are
-  // materialised here rather than at every call site.
   const points = useMemo(
     () => withBucketGaps(data, intervalMs, queryWindow),
     [data, intervalMs, queryWindow]

@@ -60,22 +60,11 @@ import * as React from "react"
 import { toast } from "sonner"
 
 interface AddMachineDialogProps {
-  /**
-   * Opened from a view: everything registered or picked here joins it, which
-   * is what "add a machine to this group" has to mean when the group is the
-   * page the user is standing on.
-   */
   view?: View
 }
 
 type Step = "target" | "credential" | "review"
 
-/**
- * Fixed for the life of the dialog. The credential step has nothing to ask
- * when nothing is being registered, but dropping it from the list made the
- * wizard grow a step the moment an address was typed, which reads as the run
- * getting longer rather than as a step becoming relevant.
- */
 const STEPS: Step[] = ["target", "credential", "review"]
 
 const STEP_LABELS: Record<Step, string> = {
@@ -84,11 +73,6 @@ const STEP_LABELS: Record<Step, string> = {
   review: "Review",
 }
 
-/**
- * How the machines being registered get something to be polled with. Offering
- * the choice here avoids leaving a successfully registered machine silently
- * skipped by the collector until someone notices it has no credential.
- */
 type CredentialMode = "existing" | "new"
 
 interface RegistrationOutcome {
@@ -100,16 +84,6 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
 }
 
-/**
- * Registration in three steps: what to poll, what to poll it with, and a look
- * at both before anything is written.
- *
- * It was one long card, which put an SNMPv3 USM identity — a username, a
- * security level and two passphrases — directly below an address field, with
- * nothing saying the second half was optional or which fields the first half
- * made irrelevant. Splitting it lets each step ask one question and validate
- * its own answer before the next one is worth filling in.
- */
 export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const [open, setOpen] = React.useState(false)
   const [stepIndex, setStepIndex] = React.useState(0)
@@ -131,8 +105,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const [outcome, setOutcome] = React.useState<RegistrationOutcome | null>(null)
 
   const canRegister = useHasScope(SCOPES.machinesWrite)
-  // Binding is `credentials:write` whichever profile is bound — repointing a
-  // machine at a shared secret is the privileged half, not creating one.
   const canBind = useHasScope(SCOPES.credentialsWrite)
   const canListCredentials = useHasScope(SCOPES.credentialsRead)
 
@@ -143,9 +115,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const testCredential = useTestCredentialMutation()
   const [submitting, setSubmitting] = React.useState(false)
 
-  // The picker is a convenience the OpenStack cache provides, and reading it
-  // is an admin scope — without it, registration still works by typing an
-  // address, which is the path every external machine takes anyway.
   const { data: servers } = useCachedServersQuery({ enabled: open })
   const { data: machines } = useQuery(machinesQueryOptions())
   const { data: credentials } = useCredentialsQuery({ enabled: open })
@@ -154,30 +123,20 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
   const available = (servers ?? []).filter(
     (server) => !registered.has(server.mac)
   )
-  // Inside a view, a machine that is already registered but not a member is
-  // added to the view rather than registered again.
   const joinable = view
     ? (machines ?? []).filter((machine) => !view.macs.includes(machine.mac))
     : []
 
   const typedAddress = ipv4.trim()
-  // The cache is exactly what the backend resolves a MAC from, so an address
-  // missing here is the address that has to be named by hand.
   const cached = (servers ?? []).find((entry) => entry.ipv4 === typedAddress)
   const macRequired = Boolean(typedAddress) && servers !== undefined && !cached
 
   const registerCount = picked.length + (typedAddress ? 1 : 0)
-  // Nothing to poll means nothing to authenticate with: attaching machines a
-  // view already knows about never reaches the backend.
   const needsCredentialStep = canRegister && canBind && registerCount > 0
 
   const index = Math.min(stepIndex, STEPS.length - 1)
   const step = STEPS[index]
 
-  // A saved profile is only an option when there is one to read: without
-  // `credentials:read` the list is empty for a reason the user cannot fix from
-  // here, so the mode falls through to creating one rather than offering a
-  // picker with nothing in it.
   const savedProfiles = credentials ?? []
   const canPickExisting = canListCredentials && savedProfiles.length > 0
   const mode: CredentialMode =
@@ -205,18 +164,10 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     testCredential.reset()
   }
 
-  /**
-   * The registration bodies the target step describes, or the reason it does
-   * not describe any yet. Recomputed rather than stored, so a correction on
-   * the way back through the wizard is picked up without a second validation
-   * path to keep in step.
-   */
   const buildBodies = (): { bodies: MachineCreate[]; error: string | null } => {
     const bodies: MachineCreate[] = []
     for (const address of picked) {
       const server = available.find((entry) => entry.ipv4 === address)
-      // Bulk registration takes the server's own name as the label, since
-      // typing one per machine is the work picking from the list avoids.
       bodies.push({ ipv4: address, label: server?.name })
     }
 
@@ -238,8 +189,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
           error: `OpenStack has no record of ${typedAddress}. Enter its MAC to register it as an external machine.`,
         }
       }
-      // The fleet names its own machines: sending a MAC that disagrees with
-      // the lookup is a 422, and catching it here says which one is wrong.
       if (
         cached &&
         parsed.data.mac &&
@@ -265,7 +214,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     return { bodies, error: null }
   }
 
-  /** Whether the current step is answered well enough to leave it. */
   const validateStep = (): boolean => {
     if (step === "target") {
       const { error: problem } = buildBodies()
@@ -274,8 +222,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     }
 
     if (step === "credential") {
-      // The step is always shown, so it is always walked through; with nothing
-      // to register there is nothing to validate and no answer to demand.
       if (!needsCredentialStep) {
         setError(null)
         return true
@@ -353,9 +299,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
       const tested: Machine[] = []
       const testFailures: { machine: Machine; reason: string }[] = []
 
-      // A new secret is tested inline before it is saved or bound. The machine
-      // row already exists, so the endpoint still gets its destination from
-      // registration rather than accepting an attacker-controlled address.
       if (inlineCredential) {
         for (const machine of created) {
           try {
@@ -379,8 +322,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
           }
         }
 
-        // Keep the profile available for correction even when every walk
-        // fails, but only bind it to machines on which the inline test passed.
         if (created.length > 0) {
           try {
             savedCredentialId = (
@@ -411,8 +352,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
             continue
           }
 
-          // Saved profiles have no readable secret to send inline. Bind first,
-          // test the resulting machine configuration, and undo a failed check.
           if (!inlineCredential) {
             let failureReason: string | null = null
             try {
@@ -503,10 +442,6 @@ export function AddMachineDialog({ view }: AddMachineDialogProps) {
     }
   }
 
-  // Registration needs `machines:write`. Inside a view the dialog still earns
-  // its place without it — adding an already-registered machine to a view is
-  // local state that never reaches the backend — so only the register half
-  // goes away there, and everywhere else the button does.
   if (!canRegister && !view) return null
 
   return (
@@ -721,8 +656,6 @@ function Stepper({ steps, index }: { steps: Step[]; index: number }) {
   )
 }
 
-// --- Step 1: what to poll ---------------------------------------------------
-
 interface TargetStepProps {
   canRegister: boolean
   available: ServerInfo[]
@@ -884,8 +817,6 @@ function TargetStep({
   )
 }
 
-// --- Step 2: what to poll it with -------------------------------------------
-
 interface CredentialStepProps {
   mode: CredentialMode
   onMode: (next: CredentialMode) => void
@@ -979,11 +910,6 @@ function CredentialStep({
   )
 }
 
-/**
- * The credential step with nothing to ask: it keeps its place in the wizard so
- * the stepper stays three steps long, and says why it is empty rather than
- * looking like a form that failed to load.
- */
 function IdleCredentialStep({ reason }: { reason: string }) {
   return (
     <FieldGroup>
@@ -994,8 +920,6 @@ function IdleCredentialStep({ reason }: { reason: string }) {
     </FieldGroup>
   )
 }
-
-// --- Step 3: what is about to happen ----------------------------------------
 
 interface ReviewStepProps {
   picked: string[]

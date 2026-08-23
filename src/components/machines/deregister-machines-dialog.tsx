@@ -33,17 +33,9 @@ import * as React from "react"
 import { toast } from "sonner"
 
 interface DeregisterMachinesDialogProps {
-  /** Defaults to the whole fleet; pass a subset to scope the picker to it. */
   machines?: Machine[]
 }
 
-/**
- * Deregisters several machines at once.
- *
- * The dialog is the confirmation: nothing is destroyed until machines are
- * picked and the destructive button is pressed, and the count is spelled out
- * on it so a mis-click cannot quietly take the fleet with it.
- */
 export function DeregisterMachinesDialog({
   machines,
 }: DeregisterMachinesDialogProps) {
@@ -57,8 +49,6 @@ export function DeregisterMachinesDialog({
   const remove = useDeleteMachinesMutation()
 
   const navigate = useNavigate()
-  // Only the open machine's own page has to be left behind; from a list the
-  // rows just disappear and the user stays put.
   const { mac: openMac } = useParams({ strict: false })
 
   const reset = () => {
@@ -91,8 +81,6 @@ export function DeregisterMachinesDialog({
         if (openMac && removed.includes(openMac)) {
           void navigate({ to: "/machines" })
         }
-        // A partial failure keeps the dialog open with the rest still picked,
-        // so the ones that did not go through can be retried as they are.
         if (failed.length === 0) {
           setOpen(false)
           reset()
@@ -106,8 +94,6 @@ export function DeregisterMachinesDialog({
     })
   }
 
-  // Deregistering takes the machine's history with it, so the button is not
-  // offered to a user the backend would refuse.
   if (!canDeregister) return null
 
   return (

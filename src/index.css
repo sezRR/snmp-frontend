@@ -7,12 +7,10 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Native controls (the time input's clock, its dropdown panel) paint from
-     the UA color scheme, not from our tokens, so it has to be declared. */
   color-scheme: light;
-  --background: oklch(0.995 0.006 60); /* was: oklch(1 0 0) */
+  --background: oklch(0.995 0.006 60);
   --foreground: oklch(0.147 0.004 49.3);
-  --card: oklch(0.995 0.006 60); /* was: oklch(1 0 0) */
+  --card: oklch(0.995 0.006 60);
   --card-foreground: oklch(0.147 0.004 49.3);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.147 0.004 49.3);
@@ -46,8 +44,6 @@
   --sidebar-border: oklch(0.922 0.005 34.3);
   --sidebar-ring: oklch(0.714 0.014 41.2);
 
-  /* The foreground hue at low alpha, so the bar tints with the surface
-       rather than sitting on it as flat grey. */
   --scrollbar-size: 12px;
   --scrollbar-inset: 3px;
   --scrollbar-track: transparent;
@@ -58,9 +54,9 @@
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.15 0.01 42); /* was: oklch(0.147 0.004 49.3) */
+  --background: oklch(0.15 0.01 42);
   --foreground: oklch(0.986 0.002 67.8);
-  --card: oklch(0.218 0.014 43); /* was: oklch(0.214 0.009 43.1) */
+  --card: oklch(0.218 0.014 43);
   --card-foreground: oklch(0.986 0.002 67.8);
   --popover: oklch(0.214 0.009 43.1);
   --popover-foreground: oklch(0.986 0.002 67.8);
@@ -91,8 +87,6 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.547 0.021 43.1);
 
-  /* A light thumb on a dark surface reads fainter at the same alpha, so the
-       dark theme runs slightly stronger. */
   --scrollbar-thumb: oklch(0.986 0.002 67.8 / 24%);
   --scrollbar-thumb-hover: oklch(0.986 0.002 67.8 / 40%);
   --scrollbar-thumb-active: oklch(0.986 0.002 67.8 / 55%);
@@ -169,8 +163,6 @@
   [data-slot="input"][type="search"]::-webkit-search-cancel-button:hover {
     opacity: 0.8;
   }
-  /* Same treatment as the search cancel button: the UA glyph is replaced by a
-     currentColor mask so the clock tracks the theme instead of staying black. */
   [data-slot="input"][type="time"]::-webkit-calendar-picker-indicator {
     width: 0.875rem;
     height: 0.875rem;
@@ -191,10 +183,6 @@
     @apply font-sans;
   }
 
-  /* Chrome and Safari ignore the ::-webkit-scrollbar pseudo-elements as soon
-     as scrollbar-color is set, so the standard properties are reserved for
-     engines without them (Firefox) and the pseudo-elements do the work
-     everywhere else. */
   @supports not selector(::-webkit-scrollbar) {
     html {
       scrollbar-width: thin;
@@ -210,8 +198,6 @@
     background: var(--scrollbar-track);
   }
   ::-webkit-scrollbar-thumb {
-    /* A transparent border plus content-box clipping insets the thumb, which
-       is what keeps a 12px track reading as a slim 6px bar. */
     background-color: var(--scrollbar-thumb);
     background-clip: content-box;
     border: var(--scrollbar-inset) solid transparent;

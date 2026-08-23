@@ -31,8 +31,6 @@ import {
 } from "lucide-react"
 import { z } from "zod"
 
-// Collapsed by default would hide the fleet breakdown that makes the dashboard
-// useful, so the panel starts open and remembers whatever the user chose.
 const panelOpenStore = createLocalStore<boolean>(
   "snmp.filters-open",
   true,
@@ -40,9 +38,7 @@ const panelOpenStore = createLocalStore<boolean>(
 )
 
 interface MachineToolbarProps {
-  /** Every machine in scope — the whole fleet, or a view's members. */
   machines: Machine[]
-  /** OpenStack servers in the same scope, for the group totals. */
   servers: ServerInfo[]
   filter: MachineFilter
   onFilterChange: (filter: MachineFilter) => void

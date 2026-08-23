@@ -17,21 +17,12 @@ import { z } from "zod"
 
 const searchSchema = z.object({
   redirect: returnToSchema,
-  /** Which half of the rule the visitor failed — see `auth/rbac`. */
   reason: z
     .enum(["insufficient_role", "insufficient_scope"])
     .default("insufficient_scope")
     .catch("insufficient_scope"),
 })
 
-/**
- * Where a route guard sends someone who is signed in but not allowed in.
- *
- * It lives inside the authenticated layout on purpose: the visitor still has a
- * perfectly good session, so they keep the sidebar and can go somewhere they
- * *are* allowed, rather than being thrown onto a full-page wall that implies
- * something is broken. Nothing is broken — they simply lack a permission.
- */
 export const Route = createFileRoute("/_authenticated/unauthorized")({
   validateSearch: searchSchema,
   component: UnauthorizedPage,
@@ -82,8 +73,6 @@ function UnauthorizedPage() {
             <ArrowLeft data-icon="inline-start" />
             Back to the dashboard
           </Link>
-          {/* History rather than a link to `attempted`: the address came off
-              the URL bar, and the router's `to` is a checked route path. */}
           <Button variant="ghost" onClick={() => router.history.back()}>
             <Undo2 data-icon="inline-start" />
             Go back
@@ -94,7 +83,6 @@ function UnauthorizedPage() {
   )
 }
 
-/** The user's own roles or scopes, so "ask for what?" has a concrete answer. */
 function PermissionList({
   label,
   items,

@@ -27,10 +27,6 @@ import {
 } from "@tanstack/react-router"
 import { Check, ChevronsUpDown } from "lucide-react"
 
-// The trail carries the work, so the header no longer repeats the app name:
-// it says where you are, and the leaf doubles as a switcher between siblings
-// so hopping to another machine or view does not mean going back to a list.
-
 interface SwitcherOption {
   id: string
   label: string
@@ -44,7 +40,6 @@ export function AppBreadcrumbs() {
   const views = useViews()
   const { data: machines } = useQuery({
     ...machinesQueryOptions(),
-    // Only the machine trail needs the list; elsewhere it stays out of the way.
     enabled: pathname.startsWith("/machines"),
   })
 
@@ -165,7 +160,6 @@ interface SwitcherProps {
   onSelect: (id: string) => void
 }
 
-/** The leaf crumb: the current page, and a jump list to its siblings. */
 function Switcher({
   label,
   currentId,
@@ -190,7 +184,6 @@ function Switcher({
         }
       />
       <DropdownMenuContent align="start" className="min-w-56">
-        {/* GroupLabel reads its context from Group, so both live together. */}
         <DropdownMenuGroup>
           <DropdownMenuLabel>{groupLabel}</DropdownMenuLabel>
           <DropdownMenuSeparator />

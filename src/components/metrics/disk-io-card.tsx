@@ -11,7 +11,6 @@ import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react"
 
 interface DiskIoCardProps {
   io: DiskIoReading | null
-  /** Per-mount rates, listed when the collector breaks the total down. */
   disks?: DiskReading[]
 }
 
@@ -22,11 +21,8 @@ const hasIo = (reading: DiskIoReading | null | undefined): boolean =>
     reading.readIops !== null ||
     reading.writeIops !== null)
 
-/** Latest disk throughput and operation rate — history lives in the charts. */
 export function DiskIoCard({ io, disks = [] }: DiskIoCardProps) {
   const reported = hasIo(io)
-  // Only worth breaking out when more than one mount reports its own IO;
-  // otherwise the rows would just repeat the total above them.
   const perMount = disks.filter(hasIo)
   const busiest = [...perMount].sort((a, b) => rateOf(b) - rateOf(a))
 
@@ -80,7 +76,6 @@ export function DiskIoCard({ io, disks = [] }: DiskIoCardProps) {
   )
 }
 
-/** Sort key: total bytes moved, falling back to operations when only IOPS. */
 function rateOf(disk: DiskReading): number {
   const bytes = (disk.readBps ?? 0) + (disk.writeBps ?? 0)
   if (bytes > 0) return bytes

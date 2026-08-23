@@ -1,6 +1,3 @@
-// Relative and extension-qualified, unlike the "@/" alias used elsewhere: this
-// module is covered by tests/live-buckets.test.ts, and the node:test runner
-// resolves neither the alias nor an extensionless specifier.
 import type { ChartPoint, MetricsSnapshot } from "./metrics.ts"
 import { snapshotToPoint } from "./metrics.ts"
 
@@ -24,24 +21,13 @@ const emptyMetrics = (): Omit<ChartPoint, "ts"> =>
     "ts"
   >
 
-// An outage produces no stats rows at all, so without this the chart draws a
-// straight line from before the gap to after it, and the X axis — which plots
-// points evenly, not by time — hides how long the machine was silent. Filling
-// the missing buckets with nulls restores both the break and the spacing.
 const MAX_FILLED_BUCKETS = 2000
 
-/** The absolute window a chart was asked for, as the stats query resolved it. */
 export interface BucketWindow {
   from: string
   to: string
 }
 
-/**
- * The first and last bucket the backend can emit for a window. Buckets are
- * stamped with their start and floored to the interval, so the first one can
- * begin just before `from`, and the last one is the final interval that starts
- * before `to` — the window is half-open.
- */
 function windowBucketBounds(
   window: BucketWindow,
   intervalMs: number
@@ -59,17 +45,11 @@ function emptyBucket(ms: number): ChartPoint {
   return { ts: new Date(ms).toISOString(), ...emptyMetrics() }
 }
 
-// A machine that was silent for the first or last stretch of the window
-// produces no rows there, and the axis — which plots points evenly rather than
-// by time — would then start at the first sample instead of at From, quietly
-// rescaling the window the user asked for. Padding the edges keeps the chart
-// spanning exactly the window that was queried.
 function padToWindow(
   points: ChartPoint[],
   intervalMs: number,
   window: BucketWindow
 ): ChartPoint[] {
-  // No data at all keeps its empty state rather than becoming a window of nulls.
   if (points.length === 0) return points
   const bounds = windowBucketBounds(window, intervalMs)
   if (!bounds) return points
@@ -89,7 +69,6 @@ function padToWindow(
   const trailing: ChartPoint[] = []
   const lastPointMs = Date.parse(points[points.length - 1].ts)
   if (Number.isFinite(lastPointMs)) {
-    // The live tail can already reach past the queried `to`; only ever add.
     for (
       let ts = lastPointMs + intervalMs;
       ts <= bounds.last && trailing.length < MAX_FILLED_BUCKETS;
@@ -124,8 +103,6 @@ function fillInteriorGaps(
     const point = points[i]
     const prevMs = Date.parse(filled[filled.length - 1].ts)
     const currentMs = Date.parse(point.ts)
-    // Half an interval of slack: buckets are floored to the interval, but a
-    // live tail bucket can land a few ms off and must not read as a gap.
     if (Number.isFinite(prevMs) && currentMs - prevMs > intervalMs * 1.5) {
       const missing = Math.min(
         Math.round((currentMs - prevMs) / intervalMs) - 1,
@@ -147,20 +124,11 @@ const emptyAccumulator = (): Accumulator =>
     METRIC_KEYS.map((key) => [key, { sum: 0, count: 0 }])
   ) as Accumulator
 
-// Extends bucketed historic points with live SSE samples, aggregated into the
-// same interval so the X axis keeps an even time step. Only buckets strictly
-// after the last historic point are appended; the newest (partial) bucket
-// re-averages as samples arrive. A metric missing from a sample contributes
-// nothing rather than counting as zero — the same rule the backend's stats
-// aggregate uses.
 export function mergeLiveIntoPoints(
   points: ChartPoint[],
   samples: MetricsSnapshot[],
   intervalMs: number
 ): ChartPoint[] {
-  // The stats endpoint makes no ordering promise, and a chart plots points in
-  // array order — an unsorted response draws the axis as 1pm, 2pm, 1pm. Sort
-  // before anything else so the cutoff below is really the newest bucket.
   const history = [...points].sort(
     (a, b) => Date.parse(a.ts) - Date.parse(b.ts)
   )

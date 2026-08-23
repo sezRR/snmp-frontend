@@ -19,7 +19,6 @@ type TouchTexture = {
   update: () => void
   radiusScale: number
   readonly size: number
-  /** True while the trail still has live points, i.e. the texture keeps changing. */
   readonly active: boolean
 }
 
@@ -47,13 +46,13 @@ const createTouchTexture = (): TouchTexture => {
   }
   const drawPoint = (p: TrailPoint) => {
     const pos = { x: p.x * size, y: (1 - p.y) * size }
-    let intensity = 1
     const easeOutSine = (t: number) => Math.sin((t * Math.PI) / 2)
     const easeOutQuad = (t: number) => -t * (t - 2)
-    if (p.age < maxAge * 0.3) intensity = easeOutSine(p.age / (maxAge * 0.3))
-    else
-      intensity = easeOutQuad(1 - (p.age - maxAge * 0.3) / (maxAge * 0.7)) || 0
-    intensity *= p.force
+    const intensity =
+      (p.age < maxAge * 0.3
+        ? easeOutSine(p.age / (maxAge * 0.3))
+        : easeOutQuad(1 - (p.age - maxAge * 0.3) / (maxAge * 0.7)) || 0) *
+      p.force
     const color = `${((p.vx + 1) / 2) * 255}, ${((p.vy + 1) / 2) * 255}, ${intensity * 255}`
     const offset = size * 5
     ctx.shadowOffsetX = offset
@@ -318,7 +317,6 @@ void main(){
 
   vec3 color = uColor;
 
-  // sRGB gamma correction - convert linear to sRGB for accurate color output
   vec3 srgbColor = mix(
     color * 12.92,
     1.055 * pow(color, vec3(1.0 / 2.4)) - 0.055,
@@ -349,25 +347,17 @@ type PixelBlastUniforms = {
   uEdgeFade: THREE.IUniform<number>
 }
 
-/**
- * Options baked into the WebGL context at creation. Changing any of them means
- * tearing the engine down and building a new one.
- */
 export type PixelBlastInitOptions = {
   antialias: boolean
   liquid: boolean
   noiseAmount: number
-  /** Upper bound on devicePixelRatio. Fragment cost scales with its square. */
   maxPixelRatio: number
-  /** A decorative background rarely warrants waking a discrete GPU. */
   powerPreference: WebGLPowerPreference
 }
 
-/** Options pushed into live uniforms without recreating the context. */
 export type PixelBlastLiveOptions = {
   variant: PixelBlastVariant
   pixelSize: number
-  /** Any CSS color, including `var(--token)` and OKLCh from the theme. */
   color: string
   patternScale: number
   patternDensity: number
@@ -383,7 +373,6 @@ export type PixelBlastLiveOptions = {
   speed: number
   transparent: boolean
   edgeFade: number
-  /** Render at most this many frames per second. `0` disables the limiter. */
   fpsCap: number
 }
 
@@ -391,20 +380,11 @@ export type PixelBlastEngineOptions = PixelBlastInitOptions &
   PixelBlastLiveOptions
 
 export type PixelBlastEngine = {
-  /** Pushes changed props into live uniforms and schedules one redraw. */
   update: (next: PixelBlastLiveOptions) => void
-  /** Re-resolves the CSS color against the container, e.g. after a theme switch. */
   refreshColor: () => void
-  /** Releases every allocation this engine owns. Safe to call once, on unmount. */
   dispose: () => void
 }
 
-/**
- * Owns the whole imperative WebGL lifecycle for one PixelBlast surface: renderer,
- * scene, post-processing chain, observers, input listeners and the frame loop.
- * Everything it allocates is released by `dispose()`, so the React component that
- * drives it only has to create one engine and tear it down on unmount.
- */
 export const createPixelBlastEngine = (
   container: HTMLDivElement,
   options: PixelBlastEngineOptions
@@ -416,8 +396,6 @@ export const createPixelBlastEngine = (
     canvas,
     antialias: opts.antialias,
     alpha: true,
-    // The quad is drawn with depthTest/depthWrite off, so neither buffer is ever
-    // read; skipping them saves the allocation and its per-frame clear.
     depth: false,
     stencil: false,
     powerPreference: opts.powerPreference,
@@ -465,8 +443,6 @@ export const createPixelBlastEngine = (
     depthWrite: false,
     glslVersion: THREE.GLSL3,
   })
-  // A single oversized triangle instead of two quad triangles: same clip-space
-  // coverage, no seam along the diagonal where fragments are rasterized twice.
   const quadGeom = new THREE.BufferGeometry()
   quadGeom.setAttribute(
     "position",
@@ -534,14 +510,9 @@ export const createPixelBlastEngine = (
     composer.addPass(noisePass)
   }
 
-  // `raf === 0` means no frame is queued: the loop is parked, not merely idling in
-  // a callback. Every path that can change the image calls requestFrame() to wake
-  // it, and animate() only re-arms itself while there is more to draw.
   let raf = 0
   let stopped = false
 
-  // Declared as hoisted functions so requestFrame and animate can reference each
-  // other, and so setSize below can wake the loop before animate is reached.
   function requestFrame() {
     if (stopped || raf !== 0) return
     raf = requestAnimationFrame(animate)
@@ -549,11 +520,7 @@ export const createPixelBlastEngine = (
 
   function animate(now: number) {
     raf = 0
-    // Parked until the IntersectionObserver reports the element back on screen.
     if (opts.autoPauseOffscreen && !visible) return
-    // At speed 0 (or under reduced motion) uTime is frozen, so consecutive frames
-    // are byte-identical. Redraw only when something actually changed: a resize, a
-    // click ripple, or a live liquid trail. Otherwise the GPU stays idle.
     const isStatic = opts.speed === 0 || reducedMotion.matches
     if (isStatic && frameState.rendered && !frameState.dirty && !touch?.active)
       return
@@ -638,7 +605,6 @@ export const createPixelBlastEngine = (
     passive: true,
   })
 
-  // Without this a background scrolled out of view keeps burning frames.
   const intersectionObserver = new IntersectionObserver(
     ([entry]) => {
       visible = entry.isIntersecting
@@ -684,7 +650,6 @@ export const createPixelBlastEngine = (
       if (uFreq) uFreq.value = opts.liquidWobbleSpeed
     }
     if (touch) touch.radiusScale = opts.liquidRadius
-    // Uniforms moved, so the frozen image is stale even if nothing is animating.
     markDirty()
   }
 

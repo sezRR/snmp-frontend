@@ -48,12 +48,6 @@ export interface BulkRegisterResult {
   failed: { ipv4: string; reason: string }[]
 }
 
-/**
- * Registers addresses one request at a time — the API has no bulk endpoint —
- * and is the only registration path, since a single address is just a batch of
- * one. Individual failures are collected rather than thrown, so one address the
- * backend rejects cannot abandon the rest half-done.
- */
 export function useRegisterAllMachinesMutation() {
   const invalidate = useInvalidateMachines()
   return useMutation({
@@ -84,12 +78,6 @@ export interface BulkDeleteResult {
   failed: { mac: string; reason: string }[]
 }
 
-/**
- * Deregisters machines one request at a time, for the same reason registration
- * batches: there is no bulk endpoint. Failures are collected rather than
- * thrown, so a machine the backend refuses to drop does not leave the rest of
- * the batch untouched and the user unsure which half went through.
- */
 export function useDeleteMachinesMutation() {
   const invalidate = useInvalidateMachines()
   return useMutation({
@@ -133,7 +121,6 @@ export function useDeleteMachineMutation() {
   })
 }
 
-/** Label first, then the address — a MAC alone is unreadable in a list. */
 export function machineName(machine: Machine): string {
   return machine.label ?? machine.openstack?.name ?? machine.ipv4
 }
